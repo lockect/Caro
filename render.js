@@ -110,6 +110,49 @@ function drawPiece(r, c, player, isHover = false) {
   const cy = boardOffset + r * cellSize;
   const radius = cellSize * 0.42;
 
+  // Xử lý riêng cho Chế độ Cờ Vây (Go): Quân tròn Đen / Trắng tự nhiên không có ký hiệu X/O
+  if (gameMode === 'go') {
+    ctx.save();
+    if (isHover) ctx.globalAlpha = 0.45;
+
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+    ctx.shadowBlur = isHover ? 2 : 7;
+    ctx.shadowOffsetX = 2;
+    ctx.shadowOffsetY = 4;
+
+    const grad = ctx.createRadialGradient(
+      cx - radius * 0.35, cy - radius * 0.35, radius * 0.1,
+      cx, cy, radius
+    );
+
+    if (player === PLAYER_X) {
+      // Đá Cờ Vây Đen (Black Slate Stone)
+      grad.addColorStop(0, '#475569');
+      grad.addColorStop(0.6, '#1e293b');
+      grad.addColorStop(1, '#020617');
+    } else {
+      // Đá Cờ Vây Trắng (White Shell Stone)
+      grad.addColorStop(0, '#ffffff');
+      grad.addColorStop(0.75, '#f1f5f9');
+      grad.addColorStop(1, '#cbd5e1');
+    }
+
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+
+    if (player === PLAYER_O) {
+      ctx.strokeStyle = 'rgba(148, 163, 184, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    }
+
+    ctx.restore();
+    return;
+  }
+
+  // Các chế độ Caro / Gomoku thông thường (X & O có ký hiệu nổi)
   ctx.save();
   if (isHover) {
     ctx.globalAlpha = 0.45;
