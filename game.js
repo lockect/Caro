@@ -39,8 +39,20 @@ function isBoardFull() {
 function makeMove(r, c) {
   if (board[r][c] !== EMPTY || gameOver || isAiThinking) return false;
 
+  // Xử lý riêng cho Cờ Vây (Go Mode): Kiểm tra nước đi tự sát hợp lệ
+  if (gameMode === 'go') {
+    if (typeof isValidGoMove === 'function' && !isValidGoMove(r, c, currentPlayer, board)) {
+      return false; // Nước tự sát -> Không cho phép
+    }
+  }
+
   board[r][c] = currentPlayer;
   moveHistory.push({ r, c, player: currentPlayer });
+
+  // Ăn quân cờ vây nếu nhóm đối phương bị hết khí
+  if (gameMode === 'go' && typeof processGoCaptures === 'function') {
+    processGoCaptures(r, c, currentPlayer, board);
+  }
 
   playStoneSound();
   triggerHaptic(18);
@@ -48,14 +60,17 @@ function makeMove(r, c) {
   document.getElementById('moveCountText').innerText = moveHistory.length;
   document.getElementById('btnUndo').disabled = (moveHistory.length === 0);
 
-  const winResult = checkWin(r, c, currentPlayer);
-  if (winResult) {
-    gameOver = true;
-    winningLine = winResult;
-    clearInterval(blitzTimer);
-    render();
-    handleGameOver(currentPlayer);
-    return true;
+  // Đối với Caro / Gomoku: Kiểm tra thắng 5 quân
+  if (gameMode !== 'go') {
+    const winResult = checkWin(r, c, currentPlayer);
+    if (winResult) {
+      gameOver = true;
+      winningLine = winResult;
+      clearInterval(blitzTimer);
+      render();
+      handleGameOver(currentPlayer);
+      return true;
+    }
   }
 
   if (isBoardFull()) {
@@ -72,6 +87,14 @@ function makeMove(r, c) {
 
   if (gameMode === 'blitz') {
     startBlitzTimer();
+  }
+
+  // Nếu là Cờ Vây -> Gọi AI Cờ Vây riêng
+  if (gameMode === 'go' && currentPlayer !== humanSide && !gameOver) {
+    if (typeof triggerGoAiTurn === 'function') {
+      triggerGoAiTurn();
+    }
+    return true;
   }
 
   if ((gameMode === 'pve' || gameMode === 'tower' || (gameMode === 'blitz' && currentPlayer !== humanSide)) && currentPlayer !== humanSide && !gameOver) {
@@ -134,6 +157,10 @@ function updateModeBanner() {
     btnHint.classList.remove('hidden');
     const puz = PUZZLES[currentPuzzleIndex];
     text.innerText = `🧩 ${puz.title}`;
+  } else if (gameMode === 'go') {
+    banner.classList.remove('hidden');
+    btnHint.classList.add('hidden');
+    text.innerText = `⚫⚪ Cờ Vây 19×19 (Ăn Cờ: Đen ${goCaptured.black} - Trắng ${goCaptured.white})`;
   } else {
     banner.classList.add('hidden');
   }
@@ -142,7 +169,7 @@ function updateModeBanner() {
 function undoMove() {
   if (moveHistory.length === 0 || gameOver || isAiThinking) return;
 
-  if (gameMode === 'pve' || gameMode === 'blitz') {
+  if (gameMode === 'pve' || gameMode === 'blitz' || gameMode === 'go') {
     const stepsToUndo = (currentPlayer === humanSide) ? 2 : 1;
     for (let i = 0; i < stepsToUndo; i++) {
       if (moveHistory.length > 0) {
@@ -178,6 +205,10 @@ function resetGame() {
   hoveredCell = null;
   isAiThinking = false;
 
+  if (typeof goCaptured !== 'undefined') {
+    goCaptured = { black: 0, white: 0 };
+  }
+
   document.getElementById('moveCountText').innerText = '0';
   document.getElementById('btnUndo').disabled = true;
   document.getElementById('winModal').classList.add('hidden');
@@ -204,7 +235,11 @@ function resetGame() {
     startBlitzTimer();
   }
 
-  if ((gameMode === 'pve' || gameMode === 'tower' || gameMode === 'blitz') && humanSide === PLAYER_O && currentPlayer !== humanSide) {
+  if (gameMode === 'go' && humanSide === PLAYER_O && currentPlayer !== humanSide) {
+    if (typeof triggerGoAiTurn === 'function') {
+      triggerGoAiTurn();
+    }
+  } else if ((gameMode === 'pve' || gameMode === 'tower' || gameMode === 'blitz') && humanSide === PLAYER_O && currentPlayer !== humanSide) {
     triggerAiTurn();
   }
 }
@@ -226,6 +261,13 @@ function updateTurnUI() {
     const puz = PUZZLES[currentPuzzleIndex];
     labelX.innerText = 'Bạn (X)';
     labelO.innerText = 'Thế Cờ VCF';
+  } else if (gameMode === 'go') {
+    labelX.innerText = (humanSide === PLAYER_X) ? 'Bạn (Đá Đen ⚫)' : 'Máy (Đá Đen ⚫)';
+    labelO.innerText = (humanSide === PLAYER_O) ? 'Bạn (Đá Trắng ⚪)' : 'Máy (Đá Trắng ⚪)';
+    if (typeof goCaptured !== 'undefined') {
+      document.getElementById('scoreX').innerText = goCaptured.black;
+      document.getElementById('scoreO').innerText = goCaptured.white;
+    }
   } else {
     const diffText = (aiDifficulty === 'easy' ? 'Dễ' : (aiDifficulty === 'hell' ? 'Địa Ngục 💀' : (aiDifficulty === 'hard' ? 'Khó 🔥' : 'Vừa')));
     if (gameMode === 'pvp') {
@@ -283,71 +325,15 @@ function handleGameOver(winner) {
     btnModalNext.innerText = 'Chơi Ván Tiếp Theo';
   } else {
     const isX = (winner === PLAYER_X);
-    const isHumanWin = (winner === humanSide);
+    const name = isX
+      ? (gameMode === 'pvp' ? 'NGƯỜI CHƠI X' : (humanSide === PLAYER_X ? 'BẠN (X)' : 'MÁY (X)'))
+      : (gameMode === 'pvp' ? 'NGƯỜI CHƠI O' : (humanSide === PLAYER_O ? 'BẠN (O)' : 'MÁY (O)'));
 
-    if (gameMode === 'tower') {
-      if (isHumanWin) {
-        titleEl.innerText = `ĐÃ CHINH PHỤC TẦNG ${currentTowerStage}! 🎉`;
-        titleEl.className = 'font-outfit text-xl font-black text-amber-300 tracking-wide mb-1';
-        iconEl.innerText = '👑';
-
-        if (currentTowerStage < TOWER_STAGES.length) {
-          currentTowerStage++;
-          if (currentTowerStage > maxTowerUnlocked) {
-            maxTowerUnlocked = currentTowerStage;
-            localStorage.setItem('caro_tower_max', maxTowerUnlocked);
-          }
-          descEl.innerText = `Chúc mừng! Tầng tiếp theo: ${TOWER_STAGES[currentTowerStage - 1].bossName}`;
-          btnModalNext.innerText = `Khiêu Chiến Tầng ${currentTowerStage} ➔`;
-        } else {
-          descEl.innerText = 'BẠN ĐÃ XUẤT SẮC CHINH PHỤC TOÀN BỘ 5 TẦNG THÁP BOSS!';
-          btnModalNext.innerText = 'Tái Đấu Tầng 1';
-          currentTowerStage = 1;
-        }
-      } else {
-        titleEl.innerText = 'BỊ BẠI TRẬN!';
-        titleEl.className = 'font-outfit text-xl font-black text-rose-400 tracking-wide mb-1';
-        descEl.innerText = `${TOWER_STAGES[currentTowerStage - 1].bossName} đã đánh bại bạn tại Tầng ${currentTowerStage}.`;
-        iconEl.innerText = '💀';
-        btnModalNext.innerText = 'Thử Lại Tầng Này';
-      }
-    } else if (gameMode === 'puzzle') {
-      if (isHumanWin) {
-        titleEl.innerText = 'GIẢI ĐỐ THÀNH CÔNG! 🧩';
-        titleEl.className = 'font-outfit text-xl font-black text-cyan-400 tracking-wide mb-1';
-        iconEl.innerText = '🌟';
-
-        if (currentPuzzleIndex < PUZZLES.length - 1) {
-          currentPuzzleIndex++;
-          if (currentPuzzleIndex > maxPuzzleUnlocked) {
-            maxPuzzleUnlocked = currentPuzzleIndex;
-            localStorage.setItem('caro_puzzle_max', maxPuzzleUnlocked);
-          }
-          descEl.innerText = `Bài tiếp theo: ${PUZZLES[currentPuzzleIndex].title}`;
-          btnModalNext.innerText = 'Qua Thế Cờ Tiếp Theo ➔';
-        } else {
-          descEl.innerText = 'XUẤT SẮC! Bạn đã giải thành công tất cả thế cờ VCF!';
-          btnModalNext.innerText = 'Chơi Lại Bài 1';
-          currentPuzzleIndex = 0;
-        }
-      } else {
-        titleEl.innerText = 'GIẢI ĐỐ THẤT BẠI!';
-        titleEl.className = 'font-outfit text-xl font-black text-rose-400 tracking-wide mb-1';
-        descEl.innerText = 'Bạn chưa tìm đúng đường cờ chiến thắng.';
-        iconEl.innerText = '❌';
-        btnModalNext.innerText = 'Thử Lại Bài Này';
-      }
-    } else {
-      const name = isX
-        ? (gameMode === 'pvp' ? 'NGƯỜI CHƠI X' : (humanSide === PLAYER_X ? 'BẠN (X)' : 'MÁY (X)'))
-        : (gameMode === 'pvp' ? 'NGƯỜI CHƠI O' : (humanSide === PLAYER_O ? 'BẠN (O)' : 'MÁY (O)'));
-
-      titleEl.innerText = `${name} CHIẾN THẮNG!`;
-      titleEl.className = `font-outfit text-xl font-black ${isX ? 'text-cyan-400' : 'text-rose-400'} tracking-wide mb-1`;
-      descEl.innerText = `Chúc mừng đã tạo thành công chuỗi 5 quân cờ liên tục!`;
-      iconEl.innerText = isX ? '👑' : '🎖️';
-      btnModalNext.innerText = 'Chơi Ván Tiếp Theo';
-    }
+    titleEl.innerText = `${name} CHIẾN THẮNG!`;
+    titleEl.className = `font-outfit text-xl font-black ${isX ? 'text-cyan-400' : 'text-rose-400'} tracking-wide mb-1`;
+    descEl.innerText = `Chúc mừng đã tạo thành công chuỗi 5 quân cờ liên tục!`;
+    iconEl.innerText = isX ? '👑' : '🎖️';
+    btnModalNext.innerText = 'Chơi Ván Tiếp Theo';
 
     playWinSound();
     triggerHaptic([40, 60, 40]);
