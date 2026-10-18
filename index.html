@@ -1,0 +1,1265 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>Cờ Caro (Gomoku) Pro</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Be Vietnam Pro & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&family=Outfit:wght@600;800&display=swap" rel="stylesheet">
+  <style>
+    * {
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+      -webkit-user-select: none;
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Be Vietnam Pro', sans-serif;
+      touch-action: manipulation;
+      padding-top: max(0.5rem, env(safe-area-inset-top));
+      padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+      padding-left: max(0.5rem, env(safe-area-inset-left));
+      padding-right: max(0.5rem, env(safe-area-inset-right));
+      min-height: 100vh;
+      min-height: 100dvh;
+    }
+    .font-outfit {
+      font-family: 'Outfit', sans-serif;
+    }
+    .modal-safe-area {
+      padding-top: max(1rem, env(safe-area-inset-top));
+      padding-bottom: max(1rem, env(safe-area-inset-bottom));
+      padding-left: max(1rem, env(safe-area-inset-left));
+      padding-right: max(1rem, env(safe-area-inset-right));
+    }
+    /* Khóa cuộn màn hình khi thao tác trực tiếp trên canvas */
+    #boardCanvas {
+      touch-action: none;
+    }
+    /* Hiệu ứng chuyển động mượt */
+    .smooth-transition {
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    /* Vân gỗ và đổ bóng sâu cho container bàn cờ */
+    .wood-bezel {
+      background: linear-gradient(145deg, #78350f, #451a03);
+      box-shadow: 0 20px 40px -15px rgba(0, 0, 0, 0.6),
+                  inset 0 2px 4px rgba(255, 255, 255, 0.2),
+                  inset 0 -3px 6px rgba(0, 0, 0, 0.5);
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center justify-between p-2 sm:p-4 overflow-x-hidden">
+  
+  <!-- Header / Top Bar -->
+  <header class="w-full max-w-lg flex items-center justify-between py-1.5 px-3 bg-slate-900/80 backdrop-blur-md rounded-2xl border border-slate-800 shadow-lg mb-2">
+    <div class="flex items-center space-x-2">
+      <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-amber-600 to-amber-400 flex items-center justify-center shadow-md shadow-amber-500/20">
+        <span class="font-outfit font-extrabold text-slate-950 text-base">XO</span>
+      </div>
+      <div>
+        <h1 class="text-sm sm:text-base font-bold tracking-tight bg-gradient-to-r from-amber-200 to-amber-400 bg-clip-text text-transparent">CỜ CARO PRO</h1>
+        <p class="text-[10px] text-slate-400 leading-none">Gomoku Master 15×15</p>
+      </div>
+    </div>
+
+    <!-- Nút tùy chọn cài đặt & âm thanh -->
+    <div class="flex items-center space-x-1.5">
+      <button id="btnSoundToggle" class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 active:scale-95 smooth-transition" title="Bật/Tắt âm thanh">
+        <svg id="iconSoundOn" class="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
+          <path d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM14.657 2.929a1 1 0 011.414 0A9.972 9.972 0 0119 10a9.972 9.972 0 01-2.929 7.071 1 1 0 01-1.414-1.414A7.971 7.971 0 0017 10c0-2.21-.894-4.208-2.343-5.657a1 1 0 010-1.414zm-2.829 2.828a1 1 0 011.415 0A5.983 5.983 0 0115 10a5.984 5.984 0 01-1.757 4.243 1 1 0 01-1.415-1.415A3.984 3.984 0 0013 10a3.983 3.983 0 00-1.172-2.828 1 1 0 010-1.415z"/>
+        </svg>
+        <svg id="iconSoundOff" class="w-4 h-4 text-slate-500 hidden" fill="currentColor" viewBox="0 0 20 20">
+          <path fill-rule="evenodd" d="M9.383 3.076A1 1 0 0110 4v12a1 1 0 01-1.707.707L4.586 13H2a1 1 0 01-1-1V8a1 1 0 011-1h2.586l3.707-3.707a1 1 0 011.09-.217zM12.293 7.293a1 1 0 011.414 0L15 8.586l1.293-1.293a1 1 0 111.414 1.414L16.414 10l1.293 1.293a1 1 0 01-1.414 1.414L15 11.414l-1.293 1.293a1 1 0 01-1.414-1.414L13.586 10l-1.293-1.293a1 1 0 010-1.414z" clip-rule="evenodd"/>
+        </svg>
+      </button>
+
+      <button id="btnSettingsToggle" class="p-2 rounded-xl bg-slate-800/80 hover:bg-slate-700 border border-slate-700/60 active:scale-95 smooth-transition" title="Cài đặt">
+        <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/>
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <section class="w-full max-w-lg grid grid-cols-2 gap-2 mb-2">
+    <!-- Người chơi 1 (X) Card -->
+    <div id="playerXCard" class="relative overflow-hidden bg-slate-900/90 rounded-2xl p-2.5 border-2 border-cyan-500/60 shadow-md smooth-transition">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <div class="w-7 h-7 rounded-lg bg-cyan-950/80 border border-cyan-500/80 flex items-center justify-center font-outfit font-black text-cyan-400 text-sm shadow-inner">
+            X
+          </div>
+          <div>
+            <div id="labelPlayerX" class="text-xs font-bold text-slate-200">Bạn (Người)</div>
+            <div class="text-[10px] text-cyan-400/80 font-medium">Đi trước</div>
+          </div>
+        </div>
+        <div id="scoreX" class="font-outfit text-xl font-black text-cyan-400">0</div>
+      </div>
+      <!-- Turn Indicator Bar -->
+      <div id="turnIndicatorX" class="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-cyan-500 to-blue-500 shadow-[0_0_8px_rgba(6,182,212,0.8)]"></div>
+    </div>
+
+    <!-- Người chơi 2 hoặc AI (O) Card -->
+    <div id="playerOCard" class="relative overflow-hidden bg-slate-900/70 rounded-2xl p-2.5 border-2 border-transparent shadow-md smooth-transition opacity-80">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <div class="w-7 h-7 rounded-lg bg-rose-950/80 border border-rose-500/80 flex items-center justify-center font-outfit font-black text-rose-400 text-sm shadow-inner">
+            O
+          </div>
+          <div>
+            <div id="labelPlayerO" class="text-xs font-bold text-slate-300">Máy (AI Vừa)</div>
+            <div id="statusSubO" class="text-[10px] text-slate-400 font-medium">Chờ lượt</div>
+          </div>
+        </div>
+        <div id="scoreO" class="font-outfit text-xl font-black text-rose-400">0</div>
+      </div>
+      <div id="turnIndicatorO" class="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 to-amber-500 hidden shadow-[0_0_8px_rgba(244,63,94,0.8)]"></div>
+    </div>
+  </section>
+
+  <main class="w-full flex-1 flex flex-col items-center justify-center">
+    <div id="boardContainer" class="relative p-2.5 sm:p-3 wood-bezel rounded-2xl sm:rounded-3xl border border-amber-900/60 transition-transform">
+      <canvas id="boardCanvas" class="rounded-xl shadow-inner cursor-pointer block"></canvas>
+      
+      <!-- AI Thinking Overlay Spinner -->
+      <div id="aiThinkingBadge" class="absolute top-5 right-5 hidden bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-full border border-amber-500/40 shadow-lg items-center space-x-2">
+        <div class="w-3 h-3 border-2 border-amber-400 border-t-transparent rounded-full animate-spin"></div>
+        <span class="text-[11px] font-semibold text-amber-300">AI đang tính...</span>
+      </div>
+    </div>
+  </main>
+
+  <footer class="w-full max-w-lg mt-2 pt-1 flex items-center justify-between gap-2">
+    <!-- Nút Đi Lại (Undo) -->
+    <button id="btnUndo" class="flex-1 py-2.5 px-3 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700/80 active:scale-95 text-slate-200 font-semibold text-xs sm:text-sm flex items-center justify-center space-x-1.5 shadow-md smooth-transition disabled:opacity-40 disabled:pointer-events-none">
+      <svg class="w-4 h-4 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6"/>
+      </svg>
+      <span>Đi Lại</span>
+    </button>
+
+    <!-- Nút Ván Mới (Reset) -->
+    <button id="btnNewGame" class="flex-1 py-2.5 px-3 rounded-xl bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-500 hover:to-amber-400 text-slate-950 font-bold text-xs sm:text-sm flex items-center justify-center space-x-1.5 shadow-lg shadow-amber-600/30 active:scale-95 smooth-transition">
+      <svg class="w-4 h-4 text-slate-950" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+      </svg>
+      <span>Ván Mới</span>
+    </button>
+
+    <!-- Nút Lịch Sử & Thống Kê Nước Đi -->
+    <div class="px-3 py-2 bg-slate-900/90 rounded-xl border border-slate-800 text-center min-w-[70px]">
+      <span class="block text-[9px] uppercase tracking-wider text-slate-400 font-bold">Nước đi</span>
+      <span id="moveCountText" class="font-outfit font-black text-amber-400 text-sm">0</span>
+    </div>
+  </footer>
+
+  <div id="settingsModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 modal-safe-area hidden">
+    <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 max-w-sm w-full shadow-2xl relative">
+      <div class="flex items-center justify-between pb-3 border-b border-slate-800 mb-4">
+        <h3 class="font-bold text-base text-slate-100 flex items-center space-x-2">
+          <span>⚙️</span>
+          <span>Cấu hình ván đấu</span>
+        </h3>
+        <button id="btnCloseSettings" class="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <!-- Chế độ chơi: Solo vs AI hoặc 2 Người -->
+      <div class="space-y-4">
+        <div>
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">Chế độ chơi</label>
+          <div class="grid grid-cols-2 gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800">
+            <button id="btnModePvE" class="py-2 text-xs font-bold rounded-lg bg-amber-500 text-slate-950 shadow">
+              Đấu với Máy (AI)
+            </button>
+            <button id="btnModePvP" class="py-2 text-xs font-bold rounded-lg text-slate-400 hover:text-white">
+              2 Người (Pass&Play)
+            </button>
+          </div>
+        </div>
+
+        <!-- Cấp độ AI (Ẩn khi chọn 2 người) -->
+        <div id="aiLevelSection">
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">Cấp độ Máy</label>
+          <div class="grid grid-cols-3 gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-center">
+            <button data-diff="easy" class="btn-diff py-1.5 text-xs font-medium rounded-lg text-slate-400">Dễ</button>
+            <button data-diff="medium" class="btn-diff py-1.5 text-xs font-bold rounded-lg bg-amber-500 text-slate-950">Vừa</button>
+            <button data-diff="hard" class="btn-diff py-1.5 text-xs font-medium rounded-lg text-slate-400">Khó 🔥</button>
+          </div>
+        </div>
+
+        <!-- Chọn quân cờ của người chơi -->
+        <div id="playerSideSection">
+          <label class="block text-xs font-semibold text-slate-300 mb-1.5">Quân của bạn (Máy)</label>
+          <div class="grid grid-cols-2 gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800">
+            <button id="btnPickX" class="py-2 text-xs font-bold rounded-lg bg-cyan-600 text-white flex items-center justify-center space-x-1.5">
+              <span>Quân X (Đi trước)</span>
+            </button>
+            <button id="btnPickO" class="py-2 text-xs font-bold rounded-lg text-slate-400 hover:text-white flex items-center justify-center space-x-1.5">
+              <span>Quân O (Đi sau)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Áp dụng và đóng -->
+      <button id="btnApplySettings" class="w-full mt-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 font-bold text-slate-950 text-sm shadow-md active:scale-95 smooth-transition">
+        Lưu & Bắt Đầu Ván Mới
+      </button>
+    </div>
+  </div>
+
+  <div id="winModal" class="fixed inset-0 bg-slate-950/85 backdrop-blur-md z-50 flex items-center justify-center p-4 modal-safe-area hidden">
+    <canvas id="confettiCanvas" class="absolute inset-0 pointer-events-none w-full h-full"></canvas>
+    <div class="bg-slate-900/95 border border-amber-500/50 rounded-3xl p-6 max-w-sm w-full text-center shadow-2xl relative z-10 animate-bounce-short">
+      <div id="winBadgeIcon" class="w-16 h-16 mx-auto mb-3 rounded-2xl bg-amber-500/20 border-2 border-amber-400 flex items-center justify-center text-3xl shadow-lg">
+        🏆
+      </div>
+      <h2 id="winTitle" class="font-outfit text-2xl font-black text-amber-300 tracking-wide mb-1">CHIẾN THẮNG!</h2>
+      <p id="winDescription" class="text-xs text-slate-300 mb-5 leading-relaxed">Người chơi X đã hoàn thành chuỗi 5 quân cờ liên tiếp.</p>
+      
+      <div class="space-y-2">
+        <button id="btnModalNewGame" class="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 font-extrabold text-slate-950 text-sm shadow-lg shadow-amber-500/20 active:scale-95 smooth-transition">
+          Chơi Ván Tiếp Theo
+        </button>
+        <button id="btnModalCloseReview" class="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs active:scale-95 smooth-transition">
+          Xem Lại Bàn Cờ
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* =======================================================================
+       1. GAME CONFIGURATION & STATE MANAGEMENT
+       ======================================================================= */
+    const BOARD_SIZE = 15; // Chuẩn Gomoku 15x15
+    const EMPTY = 0;
+    const PLAYER_X = 1; // Đi trước
+    const PLAYER_O = 2; // Đi sau
+
+    let board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(EMPTY));
+    let moveHistory = []; // Lưu danh sách các nước đi [{r, c, player}]
+    let currentPlayer = PLAYER_X;
+    let gameOver = false;
+    let winningLine = null; // Mảng 5 tọa độ [{r, c}] khi thắng
+    let hoveredCell = null; // {r, c} cho con trỏ chuột/chạm
+
+    // Cài đặt chế độ
+    let gameMode = 'pve'; // 'pve' (Người vs Máy) hoặc 'pvp' (2 Người)
+    let aiDifficulty = 'medium'; // 'easy', 'medium', 'hard'
+    let humanSide = PLAYER_X; // Người là X hay O trong PvE
+    let isAiThinking = false;
+
+    // Điểm số ván đấu
+    let score = { X: 0, O: 0, draws: 0 };
+    let soundEnabled = true;
+
+    /* =======================================================================
+       2. WEB AUDIO API & HAPTIC VIBRATION (KHÔNG PHỤ THUỘC FILE NGOÀI)
+       ======================================================================= */
+    let audioCtx = null;
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    }
+
+    // Âm thanh gõ cờ lách cách giòn giã (Stone Thud + Snap)
+    function playStoneSound() {
+      if (!soundEnabled) return;
+      try {
+        initAudio();
+        const now = audioCtx.currentTime;
+        
+        // Dao động tạo độ trầm ấm của bàn gỗ
+        const osc = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(420, now);
+        osc.frequency.exponentialRampToValueAtTime(80, now + 0.07);
+
+        gainNode.gain.setValueAtTime(0.6, now);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.07);
+
+        osc.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        osc.start(now);
+        osc.stop(now + 0.07);
+
+        // Tiếng gõ lách cách góc cạnh (High transient click)
+        const clickOsc = audioCtx.createOscillator();
+        const clickGain = audioCtx.createGain();
+        clickOsc.type = 'sine';
+        clickOsc.frequency.setValueAtTime(1400, now);
+        clickOsc.frequency.exponentialRampToValueAtTime(300, now + 0.02);
+
+        clickGain.gain.setValueAtTime(0.4, now);
+        clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.02);
+
+        clickOsc.connect(clickGain);
+        clickGain.connect(audioCtx.destination);
+        clickOsc.start(now);
+        clickOsc.stop(now + 0.02);
+      } catch (e) {
+        console.warn('Audio not available', e);
+      }
+    }
+
+    // Âm thanh chúc mừng chiến thắng (Fanfare Arpeggio)
+    function playWinSound() {
+      if (!soundEnabled) return;
+      try {
+        initAudio();
+        const notes = [261.63, 329.63, 392.00, 523.25, 659.25]; // C4, E4, G4, C5, E5
+        notes.forEach((freq, idx) => {
+          const osc = audioCtx.createOscillator();
+          const gainNode = audioCtx.createGain();
+          const startTime = audioCtx.currentTime + idx * 0.09;
+          
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, startTime);
+          gainNode.gain.setValueAtTime(0.35, startTime);
+          gainNode.gain.exponentialRampToValueAtTime(0.001, startTime + 0.35);
+
+          osc.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+          osc.start(startTime);
+          osc.stop(startTime + 0.35);
+        });
+      } catch (e) {
+        console.warn('Audio not available', e);
+      }
+    }
+
+    // Bộ rung phản hồi xúc giác điện thoại
+    function triggerHaptic(duration = 20) {
+      if (typeof navigator !== 'undefined' && navigator.vibrate) {
+        try {
+          navigator.vibrate(duration);
+        } catch (e) {}
+      }
+    }
+
+    /* =======================================================================
+       3. CANVAS SETUP & HI-DPI (DEVICE PIXEL RATIO) RENDERING
+       ======================================================================= */
+    const canvas = document.getElementById('boardCanvas');
+    const ctx = canvas.getContext('2d');
+    let cellSize = 0;
+    let boardOffset = 0; // Khoảng cách viền để vẽ tọa độ A-O, 1-15
+    let canvasDisplaySize = 0;
+
+    function resizeCanvas() {
+      const container = document.getElementById('boardContainer');
+      const maxW = Math.min(window.innerWidth - 28, 560);
+      const viewportH = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      const maxH = viewportH * 0.50;
+      canvasDisplaySize = Math.floor(Math.min(maxW, maxH));
+
+      // Đảm bảo kích thước tối thiểu thân thiện
+      if (canvasDisplaySize < 280) canvasDisplaySize = 280;
+
+      const dpr = Math.min(window.devicePixelRatio || 1, 2.5); // Tối ưu sắc nét Retina
+      canvas.width = canvasDisplaySize * dpr;
+      canvas.height = canvasDisplaySize * dpr;
+      canvas.style.width = `${canvasDisplaySize}px`;
+      canvas.style.height = `${canvasDisplaySize}px`;
+
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // Ô cờ = kích thước chia cho 16 phần (14 ô lưới + 2 lề chứa tọa độ)
+      cellSize = canvasDisplaySize / (BOARD_SIZE + 0.6);
+      boardOffset = cellSize * 0.8;
+
+      render();
+    }
+
+    /* =======================================================================
+       4. GRAPHICS RENDERING: GỖ CAO CẤP, TỌA ĐỘ VÀ QUÂN CỜ 3D
+       ======================================================================= */
+    function drawBoardBackground() {
+      // 1. Mặt bàn gỗ tự nhiên Kaya
+      const grad = ctx.createLinearGradient(0, 0, canvasDisplaySize, canvasDisplaySize);
+      grad.addColorStop(0, '#e8be88');
+      grad.addColorStop(0.5, '#deb070');
+      grad.addColorStop(1, '#c99853');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, canvasDisplaySize, canvasDisplaySize);
+
+      // Vân gỗ sọc tinh tế
+      ctx.save();
+      ctx.strokeStyle = 'rgba(120, 53, 15, 0.045)';
+      ctx.lineWidth = 1.5;
+      for (let y = 3; y < canvasDisplaySize; y += 7) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.bezierCurveTo(canvasDisplaySize * 0.3, y + 2, canvasDisplaySize * 0.7, y - 2, canvasDisplaySize, y);
+        ctx.stroke();
+      }
+      ctx.restore();
+
+      // 2. Kẻ lưới ô cờ 15x15
+      ctx.save();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = '#5a300a';
+
+      for (let i = 0; i < BOARD_SIZE; i++) {
+        const pos = boardOffset + i * cellSize;
+
+        // Kẻ ngang
+        ctx.beginPath();
+        ctx.moveTo(boardOffset, pos);
+        ctx.lineTo(boardOffset + (BOARD_SIZE - 1) * cellSize, pos);
+        ctx.stroke();
+
+        // Kẻ dọc
+        ctx.beginPath();
+        ctx.moveTo(pos, boardOffset);
+        ctx.lineTo(pos, boardOffset + (BOARD_SIZE - 1) * cellSize);
+        ctx.stroke();
+      }
+
+      // 3. Tọa độ (Cột: A-O, Hàng: 1-15)
+      ctx.font = `600 ${Math.max(9, cellSize * 0.32)}px 'Outfit', sans-serif`;
+      ctx.fillStyle = '#78350f';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const colLetters = 'ABCDEFGHIJKLMNO';
+      for (let i = 0; i < BOARD_SIZE; i++) {
+        const pos = boardOffset + i * cellSize;
+        // Chữ cái ở mép trên và dưới
+        ctx.fillText(colLetters[i], pos, boardOffset * 0.45);
+        // Số ở mép trái và phải
+        ctx.fillText((i + 1).toString(), boardOffset * 0.45, pos);
+      }
+
+      // 4. Các điểm sao chuẩn (Hoshi/Star points) trên bàn cờ 15x15
+      const starPoints = [
+        { r: 3, c: 3 }, { r: 3, c: 11 },
+        { r: 7, c: 7 }, // Thiên nguyên (Tengen)
+        { r: 11, c: 3 }, { r: 11, c: 11 }
+      ];
+
+      starPoints.forEach(pt => {
+        const cx = boardOffset + pt.c * cellSize;
+        const cy = boardOffset + pt.r * cellSize;
+        ctx.beginPath();
+        ctx.arc(cx, cy, Math.max(2.5, cellSize * 0.08), 0, Math.PI * 2);
+        ctx.fillStyle = '#5a300a';
+        ctx.fill();
+      });
+
+      ctx.restore();
+    }
+
+    function drawPiece(r, c, player, isHover = false) {
+      const cx = boardOffset + c * cellSize;
+      const cy = boardOffset + r * cellSize;
+      const radius = cellSize * 0.42;
+
+      ctx.save();
+      if (isHover) {
+        ctx.globalAlpha = 0.45;
+      }
+
+      // Đổ bóng 3D rơi xuống mặt gỗ
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.4)';
+      ctx.shadowBlur = isHover ? 2 : 6;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 3;
+
+      // Nền quân cờ phong cách đá quý nhám (Obsidian vs Ngọc trai)
+      const grad = ctx.createRadialGradient(
+        cx - radius * 0.3, cy - radius * 0.3, radius * 0.1,
+        cx, cy, radius
+      );
+
+      if (player === PLAYER_X) {
+        // Quân X: Khối đá than đen sâu thẳm điểm viền xanh Cyan
+        grad.addColorStop(0, '#334155');
+        grad.addColorStop(0.7, '#0f172a');
+        grad.addColorStop(1, '#020617');
+      } else {
+        // Quân O: Khối ngọc trai ánh sáng hồng ngọc
+        grad.addColorStop(0, '#ffffff');
+        grad.addColorStop(0.7, '#f8fafc');
+        grad.addColorStop(1, '#cbd5e1');
+      }
+
+      ctx.beginPath();
+      ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
+      ctx.fill();
+
+      // Reset shadow trước khi vẽ ký hiệu X/O
+      ctx.shadowColor = 'transparent';
+
+      // Vẽ ký hiệu X hoặc O nổi khối
+      const emblemSize = radius * 0.55;
+      ctx.lineWidth = Math.max(2.5, radius * 0.22);
+      ctx.lineCap = 'round';
+
+      if (player === PLAYER_X) {
+        // Ký hiệu X màu Cyan phát sáng
+        ctx.strokeStyle = '#22d3ee';
+        ctx.beginPath();
+        ctx.moveTo(cx - emblemSize, cy - emblemSize);
+        ctx.lineTo(cx + emblemSize, cy + emblemSize);
+        ctx.moveTo(cx + emblemSize, cy - emblemSize);
+        ctx.lineTo(cx - emblemSize, cy + emblemSize);
+        ctx.stroke();
+      } else {
+        // Ký hiệu O màu Hồng San Hô
+        ctx.strokeStyle = '#f43f5e';
+        ctx.beginPath();
+        ctx.arc(cx, cy, emblemSize * 0.9, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      ctx.restore();
+    }
+
+    function drawLastMoveMarker() {
+      if (moveHistory.length === 0) return;
+      const lastMove = moveHistory[moveHistory.length - 1];
+      const cx = boardOffset + lastMove.c * cellSize;
+      const cy = boardOffset + lastMove.r * cellSize;
+
+      ctx.save();
+      // Vòng tròn định vị nước đi cuối cùng
+      ctx.strokeStyle = '#fbbf24';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(cx, cy, cellSize * 0.46, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Chấm tâm nhỏ
+      ctx.fillStyle = '#fbbf24';
+      ctx.beginPath();
+      ctx.arc(cx, cy, 2.5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawWinningEffect() {
+      if (!winningLine || winningLine.length < 5) return;
+
+      const p1 = winningLine[0];
+      const p2 = winningLine[winningLine.length - 1];
+      const x1 = boardOffset + p1.c * cellSize;
+      const y1 = boardOffset + p1.r * cellSize;
+      const x2 = boardOffset + p2.c * cellSize;
+      const y2 = boardOffset + p2.r * cellSize;
+
+      ctx.save();
+      // Tia sáng vàng rực nối 5 quân chiến thắng
+      ctx.strokeStyle = '#f59e0b';
+      ctx.lineWidth = 6;
+      ctx.lineCap = 'round';
+      ctx.shadowColor = '#fbbf24';
+      ctx.shadowBlur = 14;
+
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+
+      // Vòng sáng nổi bật cho từng quân trong chuỗi 5
+      winningLine.forEach(cell => {
+        const cx = boardOffset + cell.c * cellSize;
+        const cy = boardOffset + cell.r * cellSize;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.arc(cx, cy, cellSize * 0.44, 0, Math.PI * 2);
+        ctx.stroke();
+      });
+
+      ctx.restore();
+    }
+
+    function render() {
+      ctx.clearRect(0, 0, canvasDisplaySize, canvasDisplaySize);
+      drawBoardBackground();
+
+      // Vẽ toàn bộ các quân cờ đã hạ
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          if (board[r][c] !== EMPTY) {
+            drawPiece(r, c, board[r][c]);
+          }
+        }
+      }
+
+      // Xem trước vị trí đặt cờ khi rê chuột/chạm
+      if (hoveredCell && !gameOver && !isAiThinking && board[hoveredCell.r][hoveredCell.c] === EMPTY) {
+        drawPiece(hoveredCell.r, hoveredCell.c, currentPlayer, true);
+      }
+
+      // Đánh dấu nước đi mới nhất
+      drawLastMoveMarker();
+
+      // Đường kẻ chúc mừng 5 quân thẳng hàng
+      drawWinningEffect();
+    }
+
+    /* =======================================================================
+       5. GAMEPLAY LOGIC & WIN DETECTION
+       ======================================================================= */
+    const DIRECTIONS = [
+      [0, 1],   // Ngang
+      [1, 0],   // Dọc
+      [1, 1],   // Chéo chính \
+      [1, -1]   // Chéo phụ /
+    ];
+
+    function checkWin(r, c, player) {
+      for (const [dr, dc] of DIRECTIONS) {
+        const line = [{ r, c }];
+
+        // Quét về một hướng
+        let step = 1;
+        while (true) {
+          const nr = r + dr * step;
+          const nc = c + dc * step;
+          if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === player) {
+            line.push({ r: nr, c: nc });
+            step++;
+          } else break;
+        }
+
+        // Quét về hướng ngược lại
+        step = 1;
+        while (true) {
+          const nr = r - dr * step;
+          const nc = c - dc * step;
+          if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === player) {
+            line.unshift({ r: nr, c: nc });
+            step++;
+          } else break;
+        }
+
+        // Chuẩn gomoku: đạt 5 quân liên tiếp trở lên
+        if (line.length >= 5) {
+          return line;
+        }
+      }
+      return null;
+    }
+
+    function isBoardFull() {
+      return moveHistory.length >= BOARD_SIZE * BOARD_SIZE;
+    }
+
+    function makeMove(r, c) {
+      if (board[r][c] !== EMPTY || gameOver || isAiThinking) return false;
+
+      // Ghi nhận nước đi
+      board[r][c] = currentPlayer;
+      moveHistory.push({ r, c, player: currentPlayer });
+
+      playStoneSound();
+      triggerHaptic(18);
+
+      document.getElementById('moveCountText').innerText = moveHistory.length;
+      document.getElementById('btnUndo').disabled = (moveHistory.length === 0);
+
+      // Kiểm tra thắng
+      const winResult = checkWin(r, c, currentPlayer);
+      if (winResult) {
+        gameOver = true;
+        winningLine = winResult;
+        render();
+        handleGameOver(currentPlayer);
+        return true;
+      }
+
+      // Kiểm tra hòa
+      if (isBoardFull()) {
+        gameOver = true;
+        render();
+        handleGameOver(0);
+        return true;
+      }
+
+      // Đổi lượt
+      currentPlayer = (currentPlayer === PLAYER_X) ? PLAYER_O : PLAYER_X;
+      updateTurnUI();
+      render();
+
+      // Nếu là chế độ PvE và đến lượt AI
+      if (gameMode === 'pve' && currentPlayer !== humanSide && !gameOver) {
+        triggerAiTurn();
+      }
+
+      return true;
+    }
+
+    /* =======================================================================
+       6. HEURISTIC AI ENGINE (THUẬT TOÁN MA TRẬN CHẤM ĐIỂM THÔNG MINH)
+       ======================================================================= */
+    // Điểm số phân tầng chiến thuật cho thế cờ
+    const SCORE_WIN = 1000000;
+    const SCORE_LIVE_FOUR = 120000;
+    const SCORE_BLOCKED_FOUR = 12000;
+    const SCORE_LIVE_THREE = 10000;
+    const SCORE_BLOCKED_THREE = 1000;
+    const SCORE_LIVE_TWO = 200;
+    const SCORE_BLOCKED_TWO = 30;
+
+    // Đánh giá 1 chuỗi đường đơn lẻ theo góc nhìn của một bên
+    function evaluateLine(count, blocked, emptyGaps) {
+      if (count >= 5) return SCORE_WIN;
+      if (blocked === 2 && count < 5) return 0; // Bị chặn 2 đầu thì vô giá trị
+
+      if (count === 4) {
+        return (blocked === 0) ? SCORE_LIVE_FOUR : SCORE_BLOCKED_FOUR;
+      }
+      if (count === 3) {
+        return (blocked === 0) ? SCORE_LIVE_THREE : SCORE_BLOCKED_THREE;
+      }
+      if (count === 2) {
+        return (blocked === 0) ? SCORE_LIVE_TWO : SCORE_BLOCKED_TWO;
+      }
+      return 10;
+    }
+
+    // Tính điểm tổng thể của 1 ô cờ giả định
+    function evaluateCell(r, c, targetPlayer) {
+      let totalScore = 0;
+      board[r][c] = targetPlayer;
+
+      for (const [dr, dc] of DIRECTIONS) {
+        let count = 1;
+        let blocked = 0;
+
+        // Điểm về chiều dương
+        let step = 1;
+        while (step <= 4) {
+          const nr = r + dr * step;
+          const nc = c + dc * step;
+          if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE) {
+            blocked++;
+            break;
+          }
+          if (board[nr][nc] === targetPlayer) {
+            count++;
+            step++;
+          } else if (board[nr][nc] === EMPTY) {
+            break;
+          } else {
+            blocked++;
+            break;
+          }
+        }
+
+        // Điểm về chiều âm
+        step = 1;
+        while (step <= 4) {
+          const nr = r - dr * step;
+          const nc = c - dc * step;
+          if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE) {
+            blocked++;
+            break;
+          }
+          if (board[nr][nc] === targetPlayer) {
+            count++;
+            step++;
+          } else if (board[nr][nc] === EMPTY) {
+            break;
+          } else {
+            blocked++;
+            break;
+          }
+        }
+
+        totalScore += evaluateLine(count, blocked, 0);
+      }
+
+      board[r][c] = EMPTY; // Hoàn trả ô cờ
+      return totalScore;
+    }
+
+    function getBestAiMove(aiPlayer) {
+      const oppPlayer = (aiPlayer === PLAYER_X) ? PLAYER_O : PLAYER_X;
+      
+      // Nếu là nước đi đầu tiên mở màn, đánh gần trung tâm
+      if (moveHistory.length === 0) {
+        return { r: 7, c: 7 };
+      }
+
+      // Chỉ xét các ô trống nằm trong phạm vi lân cận 2 ô so với các quân đã đánh
+      const candidates = [];
+      const visited = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(false));
+
+      for (let r = 0; r < BOARD_SIZE; r++) {
+        for (let c = 0; c < BOARD_SIZE; c++) {
+          if (board[r][c] !== EMPTY) {
+            for (let dr = -2; dr <= 2; dr++) {
+              for (let dc = -2; dc <= 2; dc++) {
+                const nr = r + dr;
+                const nc = c + dc;
+                if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
+                  if (board[nr][nc] === EMPTY && !visited[nr][nc]) {
+                    visited[nr][nc] = true;
+                    candidates.push({ r: nr, c: nc });
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      if (candidates.length === 0) return { r: 7, c: 7 };
+
+      // Trọng số tấn công vs phòng thủ tùy cấp độ
+      let attackWeight = 1.0;
+      let defenseWeight = 1.15; // Ưu tiên chặn hiểm
+
+      if (aiDifficulty === 'easy') {
+        attackWeight = 0.8;
+        defenseWeight = 0.6;
+      } else if (aiDifficulty === 'hard') {
+        attackWeight = 1.1;
+        defenseWeight = 1.25;
+      }
+
+      // Đánh giá từng ô ứng viên
+      const scoredMoves = candidates.map(cell => {
+        const attackScore = evaluateCell(cell.r, cell.c, aiPlayer);
+        const defenseScore = evaluateCell(cell.r, cell.c, oppPlayer);
+        
+        // Thưởng điểm vị trí càng gần trung tâm
+        const centerDist = Math.hypot(cell.r - 7, cell.c - 7);
+        const centerBonus = (10 - centerDist) * 8;
+
+        let totalScore = (attackScore * attackWeight) + (defenseScore * defenseWeight) + centerBonus;
+
+        // Nếu cấp độ dễ: thêm độ lệch ngẫu nhiên để tạo sơ hở cho người chơi
+        if (aiDifficulty === 'easy') {
+          totalScore *= (0.6 + Math.random() * 0.8);
+        }
+
+        return { ...cell, score: totalScore, attackScore, defenseScore };
+      });
+
+      scoredMoves.sort((a, b) => b.score - a.score);
+
+      // Cấp độ vừa: đôi khi chọn trong top 2
+      if (aiDifficulty === 'medium' && scoredMoves.length > 2 && Math.random() < 0.25) {
+        return scoredMoves[1];
+      }
+
+      return scoredMoves[0];
+    }
+
+    function triggerAiTurn() {
+      isAiThinking = true;
+      document.getElementById('aiThinkingBadge').classList.remove('hidden');
+      document.getElementById('aiThinkingBadge').classList.add('flex');
+
+      // Tạo độ trễ ngắn 250-450ms để người chơi cảm nhận sự tự nhiên
+      const delay = aiDifficulty === 'hard' ? 380 : 260;
+      setTimeout(() => {
+        if (gameOver) {
+          isAiThinking = false;
+          return;
+        }
+
+        const bestMove = getBestAiMove(currentPlayer);
+        document.getElementById('aiThinkingBadge').classList.add('hidden');
+        document.getElementById('aiThinkingBadge').classList.remove('flex');
+        isAiThinking = false;
+
+        if (bestMove) {
+          makeMove(bestMove.r, bestMove.c);
+        }
+      }, delay);
+    }
+
+    /* =======================================================================
+       7. UI INTERACTION & INPUT CONTROLS (TOUCH + DESKTOP)
+       ======================================================================= */
+    function getCellFromCoords(clientX, clientY) {
+      const rect = canvas.getBoundingClientRect();
+      const x = clientX - rect.left;
+      const y = clientY - rect.top;
+
+      const c = Math.round((x - boardOffset) / cellSize);
+      const r = Math.round((y - boardOffset) / cellSize);
+
+      if (r >= 0 && r < BOARD_SIZE && c >= 0 && c < BOARD_SIZE) {
+        return { r, c };
+      }
+      return null;
+    }
+
+    // Sự kiện chuột trên máy tính (Hover & Click)
+    canvas.addEventListener('mousemove', (e) => {
+      if (gameOver || isAiThinking) return;
+      const cell = getCellFromCoords(e.clientX, e.clientY);
+      if (cell && (hoveredCell?.r !== cell.r || hoveredCell?.c !== cell.c)) {
+        hoveredCell = cell;
+        render();
+      }
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      if (hoveredCell) {
+        hoveredCell = null;
+        render();
+      }
+    });
+
+    canvas.addEventListener('click', (e) => {
+      initAudio();
+      if (gameOver || isAiThinking) return;
+      const cell = getCellFromCoords(e.clientX, e.clientY);
+      if (cell) {
+        makeMove(cell.r, cell.c);
+      }
+    });
+
+    // Sự kiện cảm ứng mượt mà trên điện thoại
+    canvas.addEventListener('touchstart', (e) => {
+      initAudio();
+      if (gameOver || isAiThinking || e.touches.length > 1) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const cell = getCellFromCoords(touch.clientX, touch.clientY);
+      if (cell) {
+        hoveredCell = cell;
+        render();
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchmove', (e) => {
+      if (gameOver || isAiThinking || e.touches.length > 1) return;
+      e.preventDefault();
+      const touch = e.touches[0];
+      const cell = getCellFromCoords(touch.clientX, touch.clientY);
+      if (cell && (hoveredCell?.r !== cell.r || hoveredCell?.c !== cell.c)) {
+        hoveredCell = cell;
+        render();
+      }
+    }, { passive: false });
+
+    canvas.addEventListener('touchend', (e) => {
+      if (gameOver || isAiThinking) return;
+      e.preventDefault();
+      if (hoveredCell) {
+        makeMove(hoveredCell.r, hoveredCell.c);
+        hoveredCell = null;
+      }
+    });
+
+    /* =======================================================================
+       8. GAME ACTIONS (UNDO, NEW GAME, SCORE, MODALS)
+       ======================================================================= */
+    function undoMove() {
+      if (moveHistory.length === 0 || gameOver || isAiThinking) return;
+
+      // Trong chế độ PvE: Đi lại 2 nước (nước của AI + nước của người chơi)
+      if (gameMode === 'pve') {
+        // Nếu vừa đi 1 nước duy nhất mà máy chưa đi hoặc máy vừa đánh
+        const stepsToUndo = (currentPlayer === humanSide) ? 2 : 1;
+        for (let i = 0; i < stepsToUndo; i++) {
+          if (moveHistory.length > 0) {
+            const last = moveHistory.pop();
+            board[last.r][last.c] = EMPTY;
+          }
+        }
+        currentPlayer = humanSide;
+      } else {
+        // Trong chế độ PvP: Chỉ lùi 1 nước
+        const last = moveHistory.pop();
+        board[last.r][last.c] = EMPTY;
+        currentPlayer = last.player;
+      }
+
+      winningLine = null;
+      gameOver = false;
+      document.getElementById('moveCountText').innerText = moveHistory.length;
+      document.getElementById('btnUndo').disabled = (moveHistory.length === 0);
+
+      updateTurnUI();
+      render();
+      triggerHaptic(15);
+    }
+
+    function resetGame() {
+      board = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(EMPTY));
+      moveHistory = [];
+      currentPlayer = PLAYER_X;
+      gameOver = false;
+      winningLine = null;
+      hoveredCell = null;
+      isAiThinking = false;
+
+      document.getElementById('moveCountText').innerText = '0';
+      document.getElementById('btnUndo').disabled = true;
+      document.getElementById('winModal').classList.add('hidden');
+      document.getElementById('aiThinkingBadge').classList.add('hidden');
+
+      updateTurnUI();
+      render();
+
+      // Nếu PvE và người chơi chọn quân O (Máy đi trước với quân X)
+      if (gameMode === 'pve' && humanSide === PLAYER_O) {
+        triggerAiTurn();
+      }
+    }
+
+    function updateTurnUI() {
+      const cardX = document.getElementById('playerXCard');
+      const cardO = document.getElementById('playerOCard');
+      const indX = document.getElementById('turnIndicatorX');
+      const indO = document.getElementById('turnIndicatorO');
+      const subO = document.getElementById('statusSubO');
+
+      if (currentPlayer === PLAYER_X) {
+        cardX.classList.remove('opacity-80', 'border-transparent');
+        cardX.classList.add('border-cyan-500/60');
+        indX.classList.remove('hidden');
+
+        cardO.classList.add('opacity-80', 'border-transparent');
+        cardO.classList.remove('border-rose-500/60');
+        indO.classList.add('hidden');
+        subO.innerText = 'Chờ lượt';
+      } else {
+        cardO.classList.remove('opacity-80', 'border-transparent');
+        cardO.classList.add('border-rose-500/60');
+        indO.classList.remove('hidden');
+        subO.innerText = (gameMode === 'pve') ? 'Lượt của Máy' : 'Lượt của O';
+
+        cardX.classList.add('opacity-80', 'border-transparent');
+        cardX.classList.remove('border-cyan-500/60');
+        indX.classList.add('hidden');
+      }
+    }
+
+    let confettiAnimationFrame = null;
+
+    function handleGameOver(winner) {
+      if (winner === PLAYER_X) score.X++;
+      else if (winner === PLAYER_O) score.O++;
+      else score.draws++;
+
+      document.getElementById('scoreX').innerText = score.X;
+      document.getElementById('scoreO').innerText = score.O;
+
+      const titleEl = document.getElementById('winTitle');
+      const descEl = document.getElementById('winDescription');
+      const iconEl = document.getElementById('winBadgeIcon');
+
+      if (winner === 0) {
+        titleEl.innerText = 'HÒA CỜ!';
+        titleEl.className = 'font-outfit text-2xl font-black text-slate-300 tracking-wide mb-1';
+        descEl.innerText = 'Bàn cờ 15x15 đã kín mà không bên nào đạt 5 quân liên tiếp.';
+        iconEl.innerText = '🤝';
+      } else {
+        const isX = (winner === PLAYER_X);
+        const name = isX 
+          ? (gameMode === 'pve' ? (humanSide === PLAYER_X ? 'BẠN (X)' : 'MÁY (X)') : 'NGƯỜI CHƠI X')
+          : (gameMode === 'pve' ? (humanSide === PLAYER_O ? 'BẠN (O)' : 'MÁY (O)') : 'NGƯỜI CHƠI O');
+
+        titleEl.innerText = `${name} CHIẾN THẮNG!`;
+        titleEl.className = `font-outfit text-xl font-black ${isX ? 'text-cyan-400' : 'text-rose-400'} tracking-wide mb-1`;
+        descEl.innerText = `Chúc mừng đã tạo thành công chuỗi 5 quân cờ liên tục!`;
+        iconEl.innerText = isX ? '👑' : '🎖️';
+        playWinSound();
+        triggerHaptic([40, 60, 40]);
+        launchConfetti();
+      }
+
+      setTimeout(() => {
+        document.getElementById('winModal').classList.remove('hidden');
+      }, 700);
+    }
+
+    /* Confetti Particle System trên Canvas con */
+    function launchConfetti() {
+      const cCanvas = document.getElementById('confettiCanvas');
+      const cCtx = cCanvas.getContext('2d');
+      cCanvas.width = window.innerWidth;
+      cCanvas.height = window.innerHeight;
+
+      const particles = Array.from({ length: 90 }, () => ({
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+        vx: (Math.random() - 0.5) * 14,
+        vy: (Math.random() - 0.7) * 14,
+        size: Math.random() * 6 + 4,
+        color: ['#22d3ee', '#f43f5e', '#fbbf24', '#38bdf8', '#a855f7'][Math.floor(Math.random() * 5)],
+        rot: Math.random() * 360,
+        vRot: (Math.random() - 0.5) * 10,
+        gravity: 0.22,
+        alpha: 1
+      }));
+
+      function renderConfetti() {
+        cCtx.clearRect(0, 0, cCanvas.width, cCanvas.height);
+        let activeCount = 0;
+
+        particles.forEach(p => {
+          if (p.alpha <= 0.01) return;
+          activeCount++;
+          p.x += p.vx;
+          p.y += p.vy;
+          p.vy += p.gravity;
+          p.rot += p.vRot;
+          p.alpha -= 0.009;
+
+          cCtx.save();
+          cCtx.globalAlpha = Math.max(0, p.alpha);
+          cCtx.translate(p.x, p.y);
+          cCtx.rotate((p.rot * Math.PI) / 180);
+          cCtx.fillStyle = p.color;
+          cCtx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.7);
+          cCtx.restore();
+        });
+
+        if (activeCount > 0) {
+          confettiAnimationFrame = requestAnimationFrame(renderConfetti);
+        }
+      }
+
+      cancelAnimationFrame(confettiAnimationFrame);
+      renderConfetti();
+    }
+
+    /* =======================================================================
+       9. SETTINGS & EVENT LISTENERS
+       ======================================================================= */
+    document.getElementById('btnUndo').addEventListener('click', undoMove);
+    document.getElementById('btnNewGame').addEventListener('click', resetGame);
+    document.getElementById('btnModalNewGame').addEventListener('click', resetGame);
+    document.getElementById('btnModalCloseReview').addEventListener('click', () => {
+      document.getElementById('winModal').classList.add('hidden');
+    });
+
+    // Bật/tắt âm thanh
+    document.getElementById('btnSoundToggle').addEventListener('click', () => {
+      soundEnabled = !soundEnabled;
+      document.getElementById('iconSoundOn').classList.toggle('hidden', !soundEnabled);
+      document.getElementById('iconSoundOff').classList.toggle('hidden', soundEnabled);
+    });
+
+    // Mở / Đóng Hộp Thoại Cài Đặt
+    const settingsModal = document.getElementById('settingsModal');
+    document.getElementById('btnSettingsToggle').addEventListener('click', () => {
+      settingsModal.classList.remove('hidden');
+    });
+    document.getElementById('btnCloseSettings').addEventListener('click', () => {
+      settingsModal.classList.add('hidden');
+    });
+
+    // Lựa chọn Mode (PvE vs PvP)
+    const btnModePvE = document.getElementById('btnModePvE');
+    const btnModePvP = document.getElementById('btnModePvP');
+    const aiLevelSection = document.getElementById('aiLevelSection');
+    const playerSideSection = document.getElementById('playerSideSection');
+
+    btnModePvE.addEventListener('click', () => {
+      gameMode = 'pve';
+      btnModePvE.className = 'py-2 text-xs font-bold rounded-lg bg-amber-500 text-slate-950 shadow';
+      btnModePvP.className = 'py-2 text-xs font-bold rounded-lg text-slate-400 hover:text-white';
+      aiLevelSection.classList.remove('hidden');
+      playerSideSection.classList.remove('hidden');
+    });
+
+    btnModePvP.addEventListener('click', () => {
+      gameMode = 'pvp';
+      btnModePvP.className = 'py-2 text-xs font-bold rounded-lg bg-amber-500 text-slate-950 shadow';
+      btnModePvE.className = 'py-2 text-xs font-bold rounded-lg text-slate-400 hover:text-white';
+      aiLevelSection.classList.add('hidden');
+      playerSideSection.classList.add('hidden');
+    });
+
+    // Lựa chọn độ khó AI
+    document.querySelectorAll('.btn-diff').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.btn-diff').forEach(b => {
+          b.className = 'btn-diff py-1.5 text-xs font-medium rounded-lg text-slate-400';
+        });
+        btn.className = 'btn-diff py-1.5 text-xs font-bold rounded-lg bg-amber-500 text-slate-950 shadow';
+        aiDifficulty = btn.getAttribute('data-diff');
+      });
+    });
+
+    // Lựa chọn quân của người chơi
+    const btnPickX = document.getElementById('btnPickX');
+    const btnPickO = document.getElementById('btnPickO');
+
+    btnPickX.addEventListener('click', () => {
+      humanSide = PLAYER_X;
+      btnPickX.className = 'py-2 text-xs font-bold rounded-lg bg-cyan-600 text-white';
+      btnPickO.className = 'py-2 text-xs font-bold rounded-lg text-slate-400 hover:text-white';
+    });
+
+    btnPickO.addEventListener('click', () => {
+      humanSide = PLAYER_O;
+      btnPickO.className = 'py-2 text-xs font-bold rounded-lg bg-rose-600 text-white';
+      btnPickX.className = 'py-2 text-xs font-bold rounded-lg text-slate-400 hover:text-white';
+    });
+
+    // Áp dụng thiết lập mới
+    document.getElementById('btnApplySettings').addEventListener('click', () => {
+      settingsModal.classList.add('hidden');
+
+      // Cập nhật nhãn người chơi trên UI Cards
+      if (gameMode === 'pvp') {
+        document.getElementById('labelPlayerX').innerText = 'Người chơi X';
+        document.getElementById('labelPlayerO').innerText = 'Người chơi O';
+      } else {
+        const diffText = (aiDifficulty === 'easy' ? 'Dễ' : (aiDifficulty === 'hard' ? 'Khó' : 'Vừa'));
+        if (humanSide === PLAYER_X) {
+          document.getElementById('labelPlayerX').innerText = 'Bạn (X)';
+          document.getElementById('labelPlayerO').innerText = `Máy (${diffText})`;
+        } else {
+          document.getElementById('labelPlayerX').innerText = `Máy (${diffText})`;
+          document.getElementById('labelPlayerO').innerText = 'Bạn (O)';
+        }
+      }
+
+      score = { X: 0, O: 0, draws: 0 };
+      document.getElementById('scoreX').innerText = '0';
+      document.getElementById('scoreO').innerText = '0';
+      resetGame();
+    });
+
+    /* =======================================================================
+       10. INITIALIZATION & WINDOW RESIZE
+       ======================================================================= */
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+    });
+
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', () => {
+        resizeCanvas();
+      });
+    }
+
+    window.addEventListener('load', () => {
+      resizeCanvas();
+      resetGame();
+    });
+  </script>
+</body>
+</html>
