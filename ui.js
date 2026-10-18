@@ -104,14 +104,15 @@ const btnModePvP = document.getElementById('btnModePvP');
 const btnModeBlitz = document.getElementById('btnModeBlitz');
 const btnModeTower = document.getElementById('btnModeTower');
 const btnModePuzzle = document.getElementById('btnModePuzzle');
+const btnModeGo = document.getElementById('btnModeGo');
 const aiLevelSection = document.getElementById('aiLevelSection');
 const playerSideSection = document.getElementById('playerSideSection');
 
 function setActiveModeButton(activeBtn) {
-  [btnModePvE, btnModePvP, btnModeBlitz, btnModeTower, btnModePuzzle].forEach(b => {
+  [btnModePvE, btnModePvP, btnModeBlitz, btnModeTower, btnModePuzzle, btnModeGo].forEach(b => {
     if (b) b.className = 'btn-mode py-1.5 rounded-lg text-slate-400 hover:text-white';
   });
-  if (activeBtn === btnModePuzzle) {
+  if (activeBtn === btnModePuzzle || activeBtn === btnModeGo) {
     activeBtn.className = 'btn-mode col-span-2 py-1.5 rounded-lg bg-amber-500 text-slate-950 font-bold shadow';
   } else if (activeBtn) {
     activeBtn.className = 'btn-mode py-1.5 rounded-lg bg-amber-500 text-slate-950 font-bold shadow';
@@ -152,6 +153,15 @@ btnModePuzzle.addEventListener('click', () => {
   aiLevelSection.classList.add('hidden');
   playerSideSection.classList.add('hidden');
 });
+
+if (btnModeGo) {
+  btnModeGo.addEventListener('click', () => {
+    gameMode = 'go';
+    setActiveModeButton(btnModeGo);
+    aiLevelSection.classList.add('hidden');
+    playerSideSection.classList.remove('hidden');
+  });
+}
 
 // Nút Gợi ý bài tập
 document.getElementById('btnHintPuzzle').addEventListener('click', () => {
