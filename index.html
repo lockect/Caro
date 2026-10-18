@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-  <title>Cờ Caro (Gomoku) Pro</title>
+  <title>Cờ Caro (Gomoku) & Cờ Vây Pro</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <!-- Google Fonts: Be Vietnam Pro & Outfit -->
@@ -65,7 +65,7 @@
       </div>
       <div>
         <h1 class="text-sm sm:text-base font-bold tracking-tight bg-gradient-to-r from-amber-200 to-amber-400 bg-clip-text text-transparent">CỜ CARO PRO</h1>
-        <p class="text-[10px] text-slate-400 leading-none">Gomoku Master 19×19</p>
+        <p class="text-[10px] text-slate-400 leading-none">Gomoku & Go Master 19×19</p>
       </div>
     </div>
 
@@ -127,7 +127,7 @@
   </section>
 
   <main class="w-full flex-1 flex flex-col items-center justify-center">
-    <!-- Banner Thông Tin Chế Độ (Cờ Chớp / Vượt Tháp / Giải Đố) -->
+    <!-- Banner Thông Tin Chế Độ (Cờ Chớp / Vượt Tháp / Giải Đố / Cờ Vây) -->
     <div id="modeBannerBadge" class="hidden w-full max-w-lg mb-1.5 py-1 px-3 bg-slate-900/90 border border-amber-500/40 rounded-xl text-center shadow flex items-center justify-between">
       <span id="modeBannerText" class="text-xs font-bold text-amber-300">⏱️ Cờ Chớp: 10s</span>
       <button id="btnHintPuzzle" class="hidden py-0.5 px-2 rounded-lg bg-amber-500/20 border border-amber-400/50 text-[10px] font-bold text-amber-300 hover:bg-amber-500/30 active:scale-95">
@@ -182,7 +182,7 @@
         </button>
       </div>
 
-      <!-- Chế độ chơi: Solo vs AI, 2 Người, Cờ Chớp, Vượt Tháp, Giải Đố -->
+      <!-- Chế độ chơi: Solo vs AI, 2 Người, Cờ Chớp, Vượt Tháp, Giải Đố, Cờ Vây -->
       <div class="space-y-4">
         <div>
           <label class="block text-xs font-semibold text-slate-300 mb-1.5">Chế độ chơi</label>
@@ -201,6 +201,9 @@
             </button>
             <button id="btnModePuzzle" class="btn-mode col-span-2 py-1.5 rounded-lg text-slate-400 hover:text-white border border-amber-500/30 bg-amber-500/10">
               🧩 Giải Đố Thế Cờ (VCF)
+            </button>
+            <button id="btnModeGo" class="btn-mode col-span-2 py-1.5 rounded-lg text-slate-400 hover:text-white border border-slate-700 bg-slate-900">
+              ⚫⚪ Cờ Vây (Go 19×19)
             </button>
           </div>
         </div>
@@ -221,10 +224,10 @@
           <label class="block text-xs font-semibold text-slate-300 mb-1.5">Quân của bạn (Máy)</label>
           <div class="grid grid-cols-2 gap-2 bg-slate-950 p-1 rounded-xl border border-slate-800">
             <button id="btnPickX" class="py-2 text-xs font-bold rounded-lg bg-cyan-600 text-white flex items-center justify-center space-x-1.5">
-              <span>Quân X (Đi trước)</span>
+              <span>Quân X / Đen (Đi trước)</span>
             </button>
             <button id="btnPickO" class="py-2 text-xs font-bold rounded-lg text-slate-400 hover:text-white flex items-center justify-center space-x-1.5">
-              <span>Quân O (Đi sau)</span>
+              <span>Quân O / Trắng (Đi sau)</span>
             </button>
           </div>
         </div>
@@ -257,10 +260,12 @@
     </div>
   </div>
 
+  <!-- Các Module JavaScript Tách Riêng -->
   <script src="config.js"></script>
   <script src="audio.js"></script>
   <script src="render.js"></script>
   <script src="ai.js"></script>
+  <script src="go_ai.js"></script>
   <script src="game.js"></script>
   <script src="ui.js"></script>
 
