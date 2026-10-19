@@ -335,8 +335,8 @@ function getBestAiMove(aiPlayer) {
   let time = 300;
   
   if (aiDifficulty === 'medium') { maxDepth = 4; time = 800; }
-  else if (aiDifficulty === 'hard') { maxDepth = 6; time = 1500; }
-  else if (aiDifficulty === 'hell') { maxDepth = 10; time = 2500; } // Sâu 10 nước, 2.5 giây
+  else if (aiDifficulty === 'hard') { maxDepth = 6; time = 2000; }
+  else if (aiDifficulty === 'hell') { maxDepth = 10; time = 3000; } // Sâu 10 nước, 2.5 giây
 
   console.log(`[Engine] Starting search for ${aiDifficulty} mode...`);
   return GomokuEngine.search(aiPlayer, maxDepth, time);
