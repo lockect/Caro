@@ -1,10 +1,10 @@
 /* =======================================================================
-   GO (CỜ VÂY) ENGINE & DEDICATED AI MODULE
+   GO (CỜ VÂY) ENGINE & MCTS AI MODULE
    ======================================================================= */
 
 let goCaptured = { black: 0, white: 0 };
 
-// Lấy tất cả các ô kết nối cùng màu (Group) và tập hợp số Khí (Liberties)
+// 1. CÁC HÀM LUẬT CHƠI CỐT LÕI (Giữ nguyên logic của bạn)
 function getGoGroupAndLiberties(r, c, targetBoard) {
   const player = targetBoard[r][c];
   if (player === EMPTY) return { group: [], liberties: new Set() };
@@ -34,11 +34,9 @@ function getGoGroupAndLiberties(r, c, targetBoard) {
       }
     }
   }
-
   return { group, liberties };
 }
 
-// Kiểm tra và thực hiện Ăn Quân Cờ Vây (Capture Execution)
 function processGoCaptures(r, c, player, targetBoard) {
   const oppPlayer = (player === PLAYER_X) ? PLAYER_O : PLAYER_X;
   const dirs = [[0, 1], [1, 0], [0, -1], [-1, 0]];
@@ -51,7 +49,6 @@ function processGoCaptures(r, c, player, targetBoard) {
       if (targetBoard[nr][nc] === oppPlayer) {
         const { group, liberties } = getGoGroupAndLiberties(nr, nc, targetBoard);
         if (liberties.size === 0) {
-          // Ăn toàn bộ nhóm quân hết khí!
           for (let p of group) {
             targetBoard[p.r][p.c] = EMPTY;
             capturedCount++;
@@ -60,145 +57,213 @@ function processGoCaptures(r, c, player, targetBoard) {
       }
     }
   }
-
-  if (capturedCount > 0) {
-    if (player === PLAYER_X) goCaptured.black += capturedCount;
-    else goCaptured.white += capturedCount;
-  }
-
   return capturedCount;
 }
 
-// Kiểm tra Nước đi Hợp lệ Cờ Vây (Liberty & Suicide Rule)
 function isValidGoMove(r, c, player, targetBoard) {
   if (targetBoard[r][c] !== EMPTY) return false;
-
-  // Bản sao thử nghiệm
   const tempBoard = targetBoard.map(row => [...row]);
   tempBoard[r][c] = player;
-
   const oppPlayer = (player === PLAYER_X) ? PLAYER_O : PLAYER_X;
   const dirs = [[0, 1], [1, 0], [0, -1], [-1, 0]];
   let capturedAny = false;
 
-  // Thử ăn quân đối phương
   for (const [dr, dc] of dirs) {
     const nr = r + dr;
     const nc = c + dc;
     if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
       if (tempBoard[nr][nc] === oppPlayer) {
         const { liberties } = getGoGroupAndLiberties(nr, nc, tempBoard);
-        if (liberties.size === 0) {
-          capturedAny = true;
-        }
+        if (liberties.size === 0) capturedAny = true;
       }
     }
   }
 
-  // Nếu không ăn được quân nào, kiểm tra xem nhóm cờ vừa hạ có bị tự sát (0 khí) không
   if (!capturedAny) {
     const { liberties } = getGoGroupAndLiberties(r, c, tempBoard);
-    if (liberties.size === 0) {
-      return false; // Nước tự sát -> Không hợp lệ
-    }
+    if (liberties.size === 0) return false;
   }
-
   return true;
 }
 
 /* =======================================================================
-   DEDICATED GO AI (AI CỜ VÂY CHUYÊN SÂU)
+   MCTS (MONTE CARLO TREE SEARCH) - AI ĐỘ KHÓ CỰC CAO
    ======================================================================= */
-function getBestGoAiMove(aiPlayer) {
-  const oppPlayer = (aiPlayer === PLAYER_X) ? PLAYER_O : PLAYER_X;
-  const candidates = [];
-  const visited = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(false));
 
-  // Nước đi đầu tiên
-  if (moveHistory.length === 0) {
-    return { r: 9, c: 9 };
+class MCTSNode {
+  constructor(boardState, player, move = null, parent = null) {
+    this.boardState = boardState; 
+    this.player = player; // Người vừa đánh nước này
+    this.move = move;
+    this.parent = parent;
+    this.children = [];
+    this.visits = 0;
+    this.score = 0;
+    this.untriedMoves = this.generateValidMoves();
   }
 
-  // Quét các ô xung quanh quân cờ đã đánh
-  for (let r = 0; r < BOARD_SIZE; r++) {
-    for (let c = 0; c < BOARD_SIZE; c++) {
-      if (board[r][c] !== EMPTY) {
-        for (let dr = -2; dr <= 2; dr++) {
-          for (let dc = -2; dc <= 2; dc++) {
-            const nr = r + dr;
-            const nc = c + dc;
-            if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
-              if (board[nr][nc] === EMPTY && !visited[nr][nc]) {
-                visited[nr][nc] = true;
-                if (isValidGoMove(nr, nc, aiPlayer, board)) {
-                  candidates.push({ r: nr, c: nc });
-                }
+  generateValidMoves() {
+    const moves = [];
+    const nextPlayer = (this.player === PLAYER_X) ? PLAYER_O : PLAYER_X;
+    // Tối ưu: Chỉ quét xung quanh các quân cờ đã có (khoảng cách 2 ô) để giảm không gian tìm kiếm
+    const searchArea = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(false));
+    let hasPieces = false;
+
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        if (this.boardState[r][c] !== EMPTY) {
+          hasPieces = true;
+          for (let dr = -2; dr <= 2; dr++) {
+            for (let dc = -2; dc <= 2; dc++) {
+              const nr = r + dr, nc = c + dc;
+              if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
+                searchArea[nr][nc] = true;
               }
             }
           }
         }
       }
     }
+
+    if (!hasPieces) return [{ r: Math.floor(BOARD_SIZE/2), c: Math.floor(BOARD_SIZE/2) }]; // Đánh giữa bàn nếu bàn trống
+
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        if (searchArea[r][c] && isValidGoMove(r, c, nextPlayer, this.boardState)) {
+          moves.push({ r, c });
+        }
+      }
+    }
+    // Trộn ngẫu nhiên để Exploration đa dạng
+    return moves.sort(() => Math.random() - 0.5);
   }
 
-  if (candidates.length === 0) return { r: 9, c: 9 };
-
-  // Đánh giá từng ô ứng viên cho Cờ Vây (Liberties, Atari, Captures, Territory)
-  const scoredMoves = candidates.map(cell => {
-    let score = 0;
-    const tempBoard = board.map(row => [...row]);
-    tempBoard[cell.r][cell.c] = aiPlayer;
-
-    // 1. Kiểm tra ăn quân đối phương (Capture Bonus)
-    const dirs = [[0, 1], [1, 0], [0, -1], [-1, 0]];
-
-    for (const [dr, dc] of dirs) {
-      const nr = cell.r + dr;
-      const nc = cell.c + dc;
-      if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
-        if (board[nr][nc] === oppPlayer) {
-          const { liberties, group } = getGoGroupAndLiberties(nr, nc, board);
-          if (liberties.size === 1 && liberties.has(`${cell.r},${cell.c}`)) {
-            // Nước đi này ĂN QUÂN đối phương!
-            score += group.length * 10000;
-          } else if (liberties.size === 2 && liberties.has(`${cell.r},${cell.c}`)) {
-            // Bắt cờ Atari đối phương (Chỉ còn 1 khí)!
-            score += 3500;
-          }
-        }
+  // Thuật toán UCB1 (Upper Confidence Bound)
+  getBestChild(explorationParam = 1.414) {
+    let bestValue = -Infinity;
+    let bestNodes = [];
+    for (const child of this.children) {
+      const ucb1 = (child.score / child.visits) + explorationParam * Math.sqrt(Math.log(this.visits) / child.visits);
+      if (ucb1 > bestValue) {
+        bestValue = ucb1;
+        bestNodes = [child];
+      } else if (ucb1 === bestValue) {
+        bestNodes.push(child);
       }
     }
-
-    // 2. Giải cứu nhóm cờ quân mình đang bị Bắt (Atari Defense)
-    for (const [dr, dc] of dirs) {
-      const nr = cell.r + dr;
-      const nc = cell.c + dc;
-      if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
-        if (board[nr][nc] === aiPlayer) {
-          const { liberties, group } = getGoGroupAndLiberties(nr, nc, board);
-          if (liberties.size === 1 && liberties.has(`${cell.r},${cell.c}`)) {
-            // Nước đi này CỨU CỜ quân mình!
-            score += group.length * 8000;
-          }
-        }
-      }
-    }
-
-    // 3. Số Khí (Liberties) của nhóm cờ vừa tạo
-    const { liberties: myLiberties } = getGoGroupAndLiberties(cell.r, cell.c, tempBoard);
-    score += myLiberties.size * 150;
-
-    // 4. Mở rộng lãnh thổ (Khoảng cách trung tâm & các Điểm Sao / Góc)
-    const centerDist = Math.hypot(cell.r - 9, cell.c - 9);
-    score += (10 - centerDist) * 35;
-
-    return { ...cell, score };
-  });
-
-  scoredMoves.sort((a, b) => b.score - a.score);
-  return scoredMoves[0];
+    return bestNodes[Math.floor(Math.random() * bestNodes.length)];
+  }
 }
 
+// Đánh giá tĩnh trạng thái bàn cờ (Tái sử dụng Heuristic của bạn để đánh giá nhanh)
+function evaluateBoardState(tempBoard, aiPlayer) {
+  let score = 0;
+  const oppPlayer = (aiPlayer === PLAYER_X) ? PLAYER_O : PLAYER_X;
+
+  for (let r = 0; r < BOARD_SIZE; r++) {
+    for (let c = 0; c < BOARD_SIZE; c++) {
+      if (tempBoard[r][c] === aiPlayer) {
+        const { liberties, group } = getGoGroupAndLiberties(r, c, tempBoard);
+        score += liberties.size * 10;
+        if (liberties.size <= 1) score -= group.length * 500; // Phạt nặng nếu để cờ sắp chết
+      } else if (tempBoard[r][c] === oppPlayer) {
+        const { liberties, group } = getGoGroupAndLiberties(r, c, tempBoard);
+        score -= liberties.size * 10;
+        if (liberties.size <= 1) score += group.length * 500; // Thưởng lớn nếu dồn đối phương
+      }
+    }
+  }
+  return score;
+}
+
+function getBestGoAiMove(aiPlayer) {
+  const timeLimit = 3000; // AI có 1.5 giây để suy nghĩ (chỉnh cao hơn nếu muốn AI khôn hơn)
+  const startTime = Date.now();
+  const oppPlayer = (aiPlayer === PLAYER_X) ? PLAYER_O : PLAYER_X;
+  
+  // Khởi tạo gốc cây
+  const rootBoard = board.map(row => [...row]);
+  const root = new MCTSNode(rootBoard, oppPlayer);
+
+  // Vòng lặp MCTS
+  let iterations = 0;
+  while (Date.now() - startTime < timeLimit) {
+    let node = root;
+    let tempBoard = node.boardState.map(row => [...row]);
+    let currPlayer = oppPlayer;
+
+    // 1. SELECTION (Chọn node)
+    while (node.untriedMoves.length === 0 && node.children.length > 0) {
+      node = node.getBestChild();
+      tempBoard[node.move.r][node.move.c] = node.player;
+      processGoCaptures(node.move.r, node.move.c, node.player, tempBoard);
+      currPlayer = node.player;
+    }
+
+    // 2. EXPANSION (Mở rộng node)
+    if (node.untriedMoves.length > 0) {
+      const move = node.untriedMoves.pop();
+      currPlayer = (currPlayer === PLAYER_X) ? PLAYER_O : PLAYER_X;
+      tempBoard[move.r][move.c] = currPlayer;
+      processGoCaptures(move.r, move.c, currPlayer, tempBoard);
+      
+      const childNode = new MCTSNode(tempBoard.map(row => [...row]), currPlayer, move, node);
+      node.children.push(childNode);
+      node = childNode;
+    }
+
+    // 3. SIMULATION (Mô phỏng Playout) - Đi tiếp 5 nước ngẫu nhiên để dò mìn
+    let simPlayer = currPlayer;
+    for (let step = 0; step < 5; step++) {
+      simPlayer = (simPlayer === PLAYER_X) ? PLAYER_O : PLAYER_X;
+      const validMoves = [];
+      for(let i=0; i<10; i++) { // Lấy mẫu ngẫu nhiên 10 ô để tăng tốc
+        const r = Math.floor(Math.random() * BOARD_SIZE);
+        const c = Math.floor(Math.random() * BOARD_SIZE);
+        if(isValidGoMove(r, c, simPlayer, tempBoard)) validMoves.push({r, c});
+      }
+      if (validMoves.length > 0) {
+        const m = validMoves[0];
+        tempBoard[m.r][m.c] = simPlayer;
+        processGoCaptures(m.r, m.c, simPlayer, tempBoard);
+      } else {
+        break;
+      }
+    }
+
+    // Lấy điểm số từ Heuristic
+    const finalScore = evaluateBoardState(tempBoard, aiPlayer);
+
+    // 4. BACKPROPAGATION (Cập nhật ngược)
+    while (node !== null) {
+      node.visits++;
+      // Nếu là node của AI, cộng điểm. Nếu là node đối thủ, trừ điểm
+      if (node.player === aiPlayer) {
+        node.score += finalScore;
+      } else {
+        node.score -= finalScore;
+      }
+      node = node.parent;
+    }
+    iterations++;
+  }
+
+  console.log(`MCTS hoàn tất ${iterations} vòng lặp.`);
+
+  if (root.children.length === 0) return { r: Math.floor(BOARD_SIZE/2), c: Math.floor(BOARD_SIZE/2) };
+
+  // Chọn nước đi được duyệt nhiều nhất (chắc chắn nhất)
+  let bestMoveNode = root.children[0];
+  for (const child of root.children) {
+    if (child.visits > bestMoveNode.visits) {
+      bestMoveNode = child;
+    }
+  }
+
+  return bestMoveNode.move;
+}
+
+// Gọi AI
 function triggerGoAiTurn() {
   isAiThinking = true;
   const badge = document.getElementById('aiThinkingBadge');
@@ -207,10 +272,11 @@ function triggerGoAiTurn() {
     badge.classList.add('flex');
   }
 
+  // Sử dụng setTimeout để UI có thời gian render Badge trước khi main thread bị block bởi MCTS
   setTimeout(() => {
     try {
       if (gameOver) return;
-
+      
       const bestMove = getBestGoAiMove(currentPlayer);
 
       isAiThinking = false;
@@ -230,5 +296,5 @@ function triggerGoAiTurn() {
         badge.classList.remove('flex');
       }
     }
-  }, 250);
+  }, 100);
 }
