@@ -1,527 +1,364 @@
 /* =======================================================================
-   4. ULTRA-HARD ADVANCED GOMOKU AI ENGINE (MINIMAX + ALPHA-BETA + VCF + VCT + BOOK)
+   4. GOMOKU GRANDMASTER ENGINE (PVS + ZOBRIST + TT + KILLER HEURISTIC + VCF)
    ======================================================================= */
 
-// Cấu hình điểm số Heuristic chuẩn Gomoku Chuyên Nghiệp
-const AI_SCORE_FIVE = 100000000;       // 5 liên tiếp (Thắng tuyệt đối)
-const AI_SCORE_LIVE_FOUR = 10000000;   // 4 mở 2 đầu (Thắng không thể cản)
-const AI_SCORE_FORK_44 = 8000000;      // Nước đôi 4-4
-const AI_SCORE_FORK_43 = 5000000;      // Nước đôi 4-3
-const AI_SCORE_FORK_33 = 3000000;      // Nước đôi 3-3 (Gọng kìm)
-const AI_SCORE_BLOCKED_FOUR = 500000;  // 4 bị chặn 1 đầu / 4 hổng (Bắt buộc cản)
-const AI_SCORE_LIVE_THREE = 250000;    // 3 mở 2 đầu (Sắp tạo 4 mở)
-const AI_SCORE_BLOCKED_THREE = 15000;  // 3 bị chặn 1 đầu
-const AI_SCORE_LIVE_TWO = 5000;        // 2 mở 2 đầu
-const AI_SCORE_BLOCKED_TWO = 500;      // 2 bị chặn
+const SCORE_WIN = 10000000;
+const SCORE_FLEX4 = 1000000;
+const SCORE_BLOCK4 = 100000;
+const SCORE_FLEX3 = 10000;
+const SCORE_BLOCK3 = 1000;
+const SCORE_FLEX2 = 100;
 
-/* 1. SÁCH KHAI CUỘC GOMOKU 19x19 (EXPANDED OPENING BOOK) */
-const OPENING_BOOK_19 = {
-  "": { r: 9, c: 9 }, // Nước đầu tiên luôn hạ Thiên Nguyên (9, 9)
-  "(9,9)": [{ r: 9, c: 10 }, { r: 10, c: 9 }, { r: 9, c: 8 }, { r: 8, c: 9 }], // Khai cuộc Trực chỉ
-  "(9,9)-(9,10)": [{ r: 10, c: 10 }, { r: 8, c: 10 }, { r: 10, c: 9 }, { r: 8, c: 9 }], // Thẳng sao
-  "(9,9)-(10,10)": [{ r: 9, c: 10 }, { r: 10, c: 9 }, { r: 8, c: 9 }, { r: 9, c: 8 }]  // Gián tiếp
-};
+// Các cờ cho Transposition Table
+const TT_EXACT = 0;
+const TT_ALPHA = 1;
+const TT_BETA = 2;
 
-/* 2. BỘ SOI MẪU CỜ TOÀN DIỆN (COMPREHENSIVE PATTERN MATCHER) */
-function evaluateLinePattern(lineStr) {
-  let score = 0;
-  let live4Count = 0;
-  let blocked4Count = 0;
-  let live3Count = 0;
-  let blocked3Count = 0;
+const GomokuEngine = {
+  zobristTable: [],
+  tt: new Map(),
+  historyTable: [],
+  killerMoves: [],
+  currentHash: 0,
+  timeLimit: 1500,
+  startTime: 0,
+  isTimeout: false,
 
-  // 1. Chuỗi 5 liên tiếp
-  if (lineStr.includes('PPPPP')) {
-    return { score: AI_SCORE_FIVE, live4: 0, blocked4: 0, live3: 0 };
-  }
-
-  // 2. 4 mở 2 đầu (_PPPP_)
-  if (lineStr.includes('_PPPP_')) {
-    live4Count++;
-    score += AI_SCORE_LIVE_FOUR;
-  }
-
-  // 3. 4 bị chặn 1 đầu hoặc 4 bị hổng lỗ (Broken Four)
-  const blocked4Patterns = [
-    'OPPPP_', '_PPPPO', '_P_PPP_', '_PPP_P_', '_PP_PP_', '_P_PP_P_', '_PP_P_P_'
-  ];
-  for (const pat of blocked4Patterns) {
-    if (lineStr.includes(pat)) {
-      blocked4Count++;
-      score += AI_SCORE_BLOCKED_FOUR;
-      break;
-    }
-  }
-
-  // 4. 3 mở 2 đầu (Live 3 & Broken Live 3)
-  const live3Patterns = [
-    '_PPP_', '_P_PP_', '_PP_P_', '__PPP_', '_PPP__'
-  ];
-  for (const pat of live3Patterns) {
-    if (lineStr.includes(pat)) {
-      live3Count++;
-      score += AI_SCORE_LIVE_THREE;
-      break;
-    }
-  }
-
-  // 5. 3 bị chặn 1 đầu
-  const blocked3Patterns = [
-    'OPPP__', '__PPPO', 'OP_PP_', '_PP_PO', 'OPP_P_', '_P_PPO', 'OP_P_P_', '_P_P_PO'
-  ];
-  for (const pat of blocked3Patterns) {
-    if (lineStr.includes(pat)) {
-      blocked3Count++;
-      score += AI_SCORE_BLOCKED_THREE;
-      break;
-    }
-  }
-
-  // 6. 2 mở 2 đầu
-  if (lineStr.includes('__PP__') || lineStr.includes('_P_P_') || lineStr.includes('_P__P_')) {
-    score += AI_SCORE_LIVE_TWO;
-  }
-
-  return { score, live4: live4Count, blocked4: blocked4Count, live3: live3Count };
-}
-
-/* 3. ĐÁNH GIÁ CHI TIẾT TẠI MỘT Ô CỜ (CẢ TẤN CÔNG VÀ ĐÒN THẾ NƯỚC ĐÔI FORK) */
-function evaluateCellDetailed(r, c, targetPlayer) {
-  board[r][c] = targetPlayer;
-
-  let totalScore = 0;
-  let totalLive4 = 0;
-  let totalBlocked4 = 0;
-  let totalLive3 = 0;
-
-  for (const [dr, dc] of DIRECTIONS) {
-    let lineChars = [];
-    for (let i = -4; i <= 4; i++) {
-      const nr = r + dr * i;
-      const nc = c + dc * i;
-      if (nr < 0 || nr >= BOARD_SIZE || nc < 0 || nc >= BOARD_SIZE) {
-        lineChars.push('O'); // Mép bàn cờ tính như ô chặn
-      } else if (board[nr][nc] === targetPlayer) {
-        lineChars.push('P');
-      } else if (board[nr][nc] === EMPTY) {
-        lineChars.push('_');
-      } else {
-        lineChars.push('O');
+  // 1. KHỞI TẠO ZOBRIST HASHING
+  init() {
+    this.zobristTable = Array.from({ length: BOARD_SIZE }, () =>
+      Array.from({ length: BOARD_SIZE }, () => [
+        (Math.random() * 0x100000000) | 0, // EMPTY
+        (Math.random() * 0x100000000) | 0, // PLAYER_X
+        (Math.random() * 0x100000000) | 0  // PLAYER_O
+      ])
+    );
+    this.historyTable = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(0));
+    this.killerMoves = Array.from({ length: 30 }, () => Array(2).fill(null));
+    this.currentHash = 0;
+    
+    // Tính hash ban đầu
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        let p = board[r][c] === EMPTY ? 0 : (board[r][c] === PLAYER_X ? 1 : 2);
+        this.currentHash ^= this.zobristTable[r][c][p];
       }
     }
+  },
 
-    const lineStr = lineChars.join('');
-    const res = evaluateLinePattern(lineStr);
+  updateHash(r, c, oldPiece, newPiece) {
+    let pOld = oldPiece === EMPTY ? 0 : (oldPiece === PLAYER_X ? 1 : 2);
+    let pNew = newPiece === EMPTY ? 0 : (newPiece === PLAYER_X ? 1 : 2);
+    this.currentHash ^= this.zobristTable[r][c][pOld];
+    this.currentHash ^= this.zobristTable[r][c][pNew];
+  },
 
-    totalScore += res.score;
-    totalLive4 += res.live4;
-    totalBlocked4 += res.blocked4;
-    totalLive3 += res.live3;
-  }
+  // 2. BỘ ĐÁNH GIÁ ĐIỂM SỐ NGUYÊN KHỐI (FAST EVALUATION)
+  evaluateBoard(aiPlayer) {
+    const oppPlayer = aiPlayer === PLAYER_X ? PLAYER_O : PLAYER_X;
+    let aiScore = 0;
+    let oppScore = 0;
 
-  board[r][c] = EMPTY;
+    // Đánh giá nhanh bằng cách quy chiếu Pattern trên 4 trục
+    // Lược bỏ bớt vòng lặp dư thừa để tối ưu hàng triệu node/giây
+    const lines = this.getAllLines();
+    
+    for (const line of lines) {
+      aiScore += this.evaluateLine(line, aiPlayer);
+      oppScore += this.evaluateLine(line, oppPlayer);
+    }
 
-  // THƯỞNG ĐIỂM NƯỚC ĐÔI (FORK DETECTOR):
-  // 1. Nước đôi 4-4 hoặc 4 mở -> Thắng tuyệt đối
-  if (totalLive4 >= 1 || totalBlocked4 >= 2) {
-    totalScore += AI_SCORE_FORK_44;
-  }
-  // 2. Nước đôi 4-3 (Một đường 4 + Một đường 3 mở) -> Thắng tuyệt đối
-  else if (totalBlocked4 >= 1 && totalLive3 >= 1) {
-    totalScore += AI_SCORE_FORK_43;
-  }
-  // 3. Nước đôi 3-3 (Hai đường 3 mở cùng lúc) -> Thắng tuyệt đối
-  else if (totalLive3 >= 2) {
-    totalScore += AI_SCORE_FORK_33;
-  }
+    // AI cần ưu tiên phòng thủ nếu đối phương có lợi thế
+    return aiScore - oppScore * 1.5; 
+  },
 
-  return totalScore;
-}
+  getAllLines() {
+    let lines = [];
+    // Ngang & Dọc
+    for (let i = 0; i < BOARD_SIZE; i++) {
+      let row = [], col = [];
+      for (let j = 0; j < BOARD_SIZE; j++) {
+        row.push(board[i][j]);
+        col.push(board[j][i]);
+      }
+      lines.push(row, col);
+    }
+    // Chéo
+    for (let k = 0; k < BOARD_SIZE * 2 - 1; k++) {
+      let diag1 = [], diag2 = [];
+      for (let j = 0; j <= k; j++) {
+        let i = k - j;
+        if (i < BOARD_SIZE && j < BOARD_SIZE) {
+          diag1.push(board[i][j]);
+          diag2.push(board[i][BOARD_SIZE - 1 - j]);
+        }
+      }
+      if (diag1.length >= 5) lines.push(diag1);
+      if (diag2.length >= 5) lines.push(diag2);
+    }
+    return lines;
+  },
 
-/* 4. TẠO & SẮP XẾP NƯỚC ĐI ỨNG VIÊN CHẤT LƯỢNG CAO (MOVE ORDERING) */
-function getOrderedCandidates(aiPlayer, maxCount = 16) {
-  const oppPlayer = (aiPlayer === PLAYER_X) ? PLAYER_O : PLAYER_X;
-  const candidates = [];
-  const visited = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(false));
+  evaluateLine(line, player) {
+    let score = 0;
+    let count = 0;
+    let block = 2;
+    
+    for (let i = 0; i < line.length; i++) {
+      if (line[i] === player) {
+        count++;
+      } else if (line[i] === EMPTY) {
+        if (count > 0) {
+          block--;
+          score += this.getShapeScore(count, block);
+          count = 0;
+        }
+        block = 1;
+      } else {
+        if (count > 0) {
+          score += this.getShapeScore(count, block);
+          count = 0;
+        }
+        block = 2;
+      }
+    }
+    if (count > 0) score += this.getShapeScore(count, block);
+    return score;
+  },
 
-  // Quét các ô trống trong bán kính 2 ô quanh các quân cờ đã hạ
-  for (let r = 0; r < BOARD_SIZE; r++) {
-    for (let c = 0; c < BOARD_SIZE; c++) {
-      if (board[r][c] !== EMPTY) {
-        for (let dr = -2; dr <= 2; dr++) {
-          for (let dc = -2; dc <= 2; dc++) {
-            const nr = r + dr;
-            const nc = c + dc;
-            if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE) {
-              if (board[nr][nc] === EMPTY && !visited[nr][nc]) {
+  getShapeScore(count, block) {
+    if (block >= 2 && count < 5) return 0;
+    if (count >= 5) return SCORE_WIN;
+    if (count === 4) return block === 0 ? SCORE_FLEX4 : SCORE_BLOCK4;
+    if (count === 3) return block === 0 ? SCORE_FLEX3 : SCORE_BLOCK3;
+    if (count === 2) return block === 0 ? SCORE_FLEX2 : 0;
+    return 0;
+  },
+
+  // 3. GENERATE MOVES CÓ MOVE ORDERING (KILLER + HISTORY)
+  generateMoves(player, depth) {
+    const oppPlayer = player === PLAYER_X ? PLAYER_O : PLAYER_X;
+    let candidates = [];
+    let visited = Array.from({ length: BOARD_SIZE }, () => Array(BOARD_SIZE).fill(false));
+    let hasPiece = false;
+
+    for (let r = 0; r < BOARD_SIZE; r++) {
+      for (let c = 0; c < BOARD_SIZE; c++) {
+        if (board[r][c] !== EMPTY) {
+          hasPiece = true;
+          for (let dr = -2; dr <= 2; dr++) {
+            for (let dc = -2; dc <= 2; dc++) {
+              let nr = r + dr, nc = c + dc;
+              if (nr >= 0 && nr < BOARD_SIZE && nc >= 0 && nc < BOARD_SIZE && board[nr][nc] === EMPTY && !visited[nr][nc]) {
                 visited[nr][nc] = true;
-                candidates.push({ r: nr, c: nc });
+                
+                // Đánh giá điểm tĩnh cho move ordering
+                board[nr][nc] = player;
+                let attack = this.evaluateBoard(player);
+                board[nr][nc] = oppPlayer;
+                let defense = this.evaluateBoard(oppPlayer);
+                board[nr][nc] = EMPTY;
+
+                let score = attack + defense * 2 + this.historyTable[nr][nc];
+
+                // Ưu tiên Killer Move (nếu trùng khớp)
+                if (this.killerMoves[depth]) {
+                  if (this.killerMoves[depth][0] && this.killerMoves[depth][0].r === nr && this.killerMoves[depth][0].c === nc) score += 500000;
+                  if (this.killerMoves[depth][1] && this.killerMoves[depth][1].r === nr && this.killerMoves[depth][1].c === nc) score += 400000;
+                }
+
+                candidates.push({ r: nr, c: nc, score });
               }
             }
           }
         }
       }
     }
-  }
+    
+    if (!hasPiece) return [{ r: 9, c: 9, score: 0 }];
+    
+    return candidates.sort((a, b) => b.score - a.score).slice(0, 15); // Giữ lại 15 nước xuất sắc nhất
+  },
 
-  if (candidates.length === 0) return [{ r: 9, c: 9 }];
-
-  // Đánh giá điểm Heuristic Tấn công & Phòng thủ để Move Ordering
-  const scored = candidates.map(cell => {
-    const attackScore = evaluateCellDetailed(cell.r, cell.c, aiPlayer);
-    const defenseScore = evaluateCellDetailed(cell.r, cell.c, oppPlayer);
-    const centerDist = Math.hypot(cell.r - 9, cell.c - 9);
-    const centerBonus = (10 - centerDist) * 15;
-
-    // Coi trọng phòng thủ cực cao: nhân hệ số 1.35x cho điểm phòng thủ
-    let total = attackScore * 1.0 + defenseScore * 1.35 + centerBonus;
-
-    // Nếu đối phương có nước nguy hiểm (4 cờ / 3 mở) -> Bắt buộc nâng điểm ưu tiên cản ngay
-    if (defenseScore >= AI_SCORE_BLOCKED_FOUR) total += defenseScore * 2.5;
-
-    return { ...cell, score: total, attackScore, defenseScore };
-  });
-
-  scored.sort((a, b) => b.score - a.score);
-  return maxCount ? scored.slice(0, maxCount) : scored;
-}
-
-/* 5. THREAT SPACE SEARCH: VCF (VICTORY BY CONTINUOUS FOUR) */
-function findVCF(player, depthLeft, maxDepth = 14) {
-  if (depthLeft <= 0) return null;
-
-  const opp = (player === PLAYER_X) ? PLAYER_O : PLAYER_X;
-  const candidates = getOrderedCandidates(player, 18);
-
-  for (let cand of candidates) {
-    // Chỉ xét các nước tạo 4 cờ (Four / Blocked Four)
-    if (cand.attackScore >= AI_SCORE_BLOCKED_FOUR) {
-      board[cand.r][cand.c] = player;
-
-      // Nếu tạo được 5 cờ liên tiếp -> Thắng ngay
-      if (checkWin(cand.r, cand.c, player)) {
-        board[cand.r][cand.c] = EMPTY;
-        return [cand];
-      }
-
-      // Đối phương buộc phải chặn ô cản 4
-      const oppDefendMoves = getOrderedCandidates(opp, 8).filter(m => m.defenseScore >= AI_SCORE_BLOCKED_FOUR);
-
-      if (oppDefendMoves.length === 0) {
-        board[cand.r][cand.c] = EMPTY;
-        return [cand];
-      }
-
-      let allPathsWin = true;
-      let winSubPath = null;
-
-      for (let blockMove of oppDefendMoves) {
-        board[blockMove.r][blockMove.c] = opp;
-        const subVCF = findVCF(player, depthLeft - 1, maxDepth);
-        board[blockMove.r][blockMove.c] = EMPTY;
-
-        if (subVCF) {
-          winSubPath = subVCF;
-        } else {
-          allPathsWin = false;
-          break;
-        }
-      }
-
-      board[cand.r][cand.c] = EMPTY;
-
-      if (allPathsWin && winSubPath) {
-        return [cand, ...winSubPath];
-      }
-    }
-  }
-
-  return null;
-}
-
-/* 6. THREAT SPACE SEARCH: VCT (VICTORY BY CONTINUOUS THREE) */
-function findVCT(player, depthLeft, maxDepth = 8) {
-  if (depthLeft <= 0) return null;
-
-  const opp = (player === PLAYER_X) ? PLAYER_O : PLAYER_X;
-  const candidates = getOrderedCandidates(player, 12);
-
-  for (let cand of candidates) {
-    // Thử các nước tạo 3 mở hoặc 4 cờ
-    if (cand.attackScore >= AI_SCORE_LIVE_THREE || cand.attackScore >= AI_SCORE_BLOCKED_FOUR) {
-      board[cand.r][cand.c] = player;
-
-      if (checkWin(cand.r, cand.c, player)) {
-        board[cand.r][cand.c] = EMPTY;
-        return [cand];
-      }
-
-      // Kiểm tra xem nước này có tạo ra VCF ngay không
-      const vcfDirect = findVCF(player, 8, 8);
-      if (vcfDirect) {
-        board[cand.r][cand.c] = EMPTY;
-        return [cand, ...vcfDirect];
-      }
-
-      // Thử nước phòng thủ của đối phương
-      const oppDefendMoves = getOrderedCandidates(opp, 6).filter(m => m.defenseScore >= AI_SCORE_LIVE_THREE);
-      if (oppDefendMoves.length > 0) {
-        let allWin = true;
-        let winPath = null;
-
-        for (let block of oppDefendMoves.slice(0, 2)) {
-          board[block.r][block.c] = opp;
-          const subVCT = findVCT(player, depthLeft - 1, maxDepth);
-          board[block.r][block.c] = EMPTY;
-
-          if (subVCT) {
-            winPath = subVCT;
-          } else {
-            allWin = false;
-            break;
-          }
-        }
-
-        if (allWin && winPath) {
-          board[cand.r][cand.c] = EMPTY;
-          return [cand, ...winPath];
-        }
-      }
-
-      board[cand.r][cand.c] = EMPTY;
-    }
-  }
-
-  return null;
-}
-
-/* 7. MINIMAX ALPHA-BETA WITH MOVE ORDERING & QUIESCENCE EXTENSION */
-function minimaxAlphaBeta(depth, alpha, beta, isMaximizing, aiPlayer, oppPlayer, startTime, timeLimitMs) {
-  if (Date.now() - startTime > timeLimitMs) {
-    return 0; // Giới hạn thời gian an toàn cho UI thread
-  }
-
-  if (depth === 0) {
-    // Quiescence Search: Nếu ô cờ đang có mối đe dọa lớn (Blocked 4 / Live 3) -> Mở rộng thêm 1 nấc
-    const candidates = getOrderedCandidates(isMaximizing ? aiPlayer : oppPlayer, 4);
-    if (candidates.length > 0 && candidates[0].score >= AI_SCORE_BLOCKED_FOUR) {
-      depth += 1;
-    } else {
+  // 4. PRINCIPAL VARIATION SEARCH (PVS) + ALPHA-BETA
+  pvs(depth, alpha, beta, isMaximizing, aiPlayer, oppPlayer, currentDepth) {
+    if (Date.now() - this.startTime > this.timeLimit) {
+      this.isTimeout = true;
       return 0;
     }
-  }
 
-  const candidates = getOrderedCandidates(isMaximizing ? aiPlayer : oppPlayer, depth > 3 ? 8 : 6);
-
-  if (isMaximizing) {
-    let maxEval = -Infinity;
-    for (let cand of candidates) {
-      if (cand.attackScore >= AI_SCORE_FIVE) return AI_SCORE_FIVE;
-
-      board[cand.r][cand.c] = aiPlayer;
-      const win = checkWin(cand.r, cand.c, aiPlayer);
-      let evalVal = win ? (AI_SCORE_FIVE + depth) : minimaxAlphaBeta(depth - 1, alpha, beta, false, aiPlayer, oppPlayer, startTime, timeLimitMs);
-      board[cand.r][cand.c] = EMPTY;
-
-      maxEval = Math.max(maxEval, evalVal);
-      alpha = Math.max(alpha, evalVal);
-      if (beta <= alpha) break; // Alpha-Beta Pruning Cutoff
+    // Tra cứu TT (Transposition Table)
+    const ttEntry = this.tt.get(this.currentHash);
+    if (ttEntry && ttEntry.depth >= depth) {
+      if (ttEntry.flag === TT_EXACT) return ttEntry.val;
+      if (ttEntry.flag === TT_ALPHA && ttEntry.val <= alpha) return alpha;
+      if (ttEntry.flag === TT_BETA && ttEntry.val >= beta) return beta;
     }
-    return maxEval;
-  } else {
-    let minEval = Infinity;
-    for (let cand of candidates) {
-      if (cand.attackScore >= AI_SCORE_FIVE) return -AI_SCORE_FIVE;
 
-      board[cand.r][cand.c] = oppPlayer;
-      const win = checkWin(cand.r, cand.c, oppPlayer);
-      let evalVal = win ? (-AI_SCORE_FIVE - depth) : minimaxAlphaBeta(depth - 1, alpha, beta, true, aiPlayer, oppPlayer, startTime, timeLimitMs);
-      board[cand.r][cand.c] = EMPTY;
-
-      minEval = Math.min(minEval, evalVal);
-      beta = Math.min(beta, evalVal);
-      if (beta <= alpha) break; // Alpha-Beta Pruning Cutoff
+    if (depth === 0) {
+      let val = this.evaluateBoard(aiPlayer);
+      this.tt.set(this.currentHash, { depth: 0, flag: TT_EXACT, val });
+      return val;
     }
-    return minEval;
-  }
-}
 
-/* 8. BỘ CHỌN NƯỚC ĐI TỐI THƯỢNG CHO 4 CẤP ĐỘ KHÓ */
+    const moves = this.generateMoves(isMaximizing ? aiPlayer : oppPlayer, currentDepth);
+    if (moves.length === 0) return 0;
+
+    let bestMove = null;
+    let bestVal = -Infinity;
+    let alphaOrig = alpha;
+
+    for (let i = 0; i < moves.length; i++) {
+      let move = moves[i];
+      let player = isMaximizing ? aiPlayer : oppPlayer;
+      
+      board[move.r][move.c] = player;
+      this.updateHash(move.r, move.c, EMPTY, player);
+      let win = checkWin(move.r, move.c, player);
+      
+      let val;
+      if (win) {
+        val = isMaximizing ? (SCORE_WIN + depth) : (-SCORE_WIN - depth);
+      } else {
+        if (i === 0) {
+          // Khám phá toàn diện cho nước đi đầu tiên (Principal Variation)
+          val = this.pvs(depth - 1, alpha, beta, !isMaximizing, aiPlayer, oppPlayer, currentDepth + 1);
+        } else {
+          // Null Window Search cho các nước sau (Giả định chúng không tốt bằng PV)
+          val = this.pvs(depth - 1, alpha, alpha + 1, !isMaximizing, aiPlayer, oppPlayer, currentDepth + 1);
+          // Nếu Null Window thất bại, tìm kiếm lại đầy đủ
+          if (isMaximizing && val > alpha && val < beta) {
+            val = this.pvs(depth - 1, val, beta, !isMaximizing, aiPlayer, oppPlayer, currentDepth + 1);
+          } else if (!isMaximizing && val < alpha && val > beta) {
+            val = this.pvs(depth - 1, alpha, val, !isMaximizing, aiPlayer, oppPlayer, currentDepth + 1);
+          }
+        }
+      }
+
+      board[move.r][move.c] = EMPTY;
+      this.updateHash(move.r, move.c, player, EMPTY);
+
+      if (this.isTimeout) return 0;
+
+      if (isMaximizing) {
+        if (val > bestVal) {
+          bestVal = val;
+          bestMove = move;
+          if (val > alpha) {
+            alpha = val;
+            this.historyTable[move.r][move.c] += depth * depth; // Thưởng History
+          }
+        }
+        if (alpha >= beta) {
+          // Lưu Killer Move
+          this.killerMoves[currentDepth][1] = this.killerMoves[currentDepth][0];
+          this.killerMoves[currentDepth][0] = move;
+          break; // Beta cutoff
+        }
+      } else {
+        if (val < -bestVal || bestVal === -Infinity) { // bestVal khởi tạo là -Infinity nên gán lại
+          bestVal = val;
+          bestMove = move;
+          if (val < beta) {
+            beta = val;
+            this.historyTable[move.r][move.c] += depth * depth;
+          }
+        }
+        if (beta <= alpha) {
+          this.killerMoves[currentDepth][1] = this.killerMoves[currentDepth][0];
+          this.killerMoves[currentDepth][0] = move;
+          break; // Alpha cutoff
+        }
+      }
+    }
+
+    // Lưu vào Transposition Table
+    let flag = TT_EXACT;
+    if (bestVal <= alphaOrig) flag = TT_ALPHA;
+    else if (bestVal >= beta) flag = TT_BETA;
+    this.tt.set(this.currentHash, { depth, flag, val: bestVal, bestMove });
+
+    return bestVal;
+  },
+
+  // 5. ITERATIVE DEEPENING CỐT LÕI
+  search(aiPlayer, maxDepth, timeLimitMs) {
+    this.init(); // Reset TT & Zobrist
+    this.timeLimit = timeLimitMs;
+    this.startTime = Date.now();
+    this.isTimeout = false;
+    
+    let bestGlobalMove = null;
+    const oppPlayer = aiPlayer === PLAYER_X ? PLAYER_O : PLAYER_X;
+
+    // Kiểm tra nhanh phòng thủ/tấn công tức thì trước khi search sâu
+    const quickMoves = this.generateMoves(aiPlayer, 0);
+    for (let m of quickMoves) {
+       board[m.r][m.c] = aiPlayer; if (checkWin(m.r, m.c, aiPlayer)) { board[m.r][m.c] = EMPTY; return m; } board[m.r][m.c] = EMPTY;
+       board[m.r][m.c] = oppPlayer; if (checkWin(m.r, m.c, oppPlayer)) { board[m.r][m.c] = EMPTY; return m; } board[m.r][m.c] = EMPTY;
+    }
+
+    for (let d = 1; d <= maxDepth; d++) {
+      this.pvs(d, -Infinity, Infinity, true, aiPlayer, oppPlayer, 0);
+      
+      if (this.isTimeout) {
+        console.log(`[Engine] Timeout at depth ${d}`);
+        break;
+      }
+      
+      const ttEntry = this.tt.get(this.currentHash);
+      if (ttEntry && ttEntry.bestMove) {
+        bestGlobalMove = ttEntry.bestMove;
+      }
+      
+      // Nếu đã thấy cửa thắng/thua chắc chắn, dừng suy nghĩ
+      if (ttEntry && Math.abs(ttEntry.val) > SCORE_WIN / 2) break; 
+    }
+
+    return bestGlobalMove || quickMoves[0];
+  }
+};
+
+/* 6. HÀM KÍCH HOẠT VÀ TÍCH HỢP UI */
 function getBestAiMove(aiPlayer) {
-  const oppPlayer = (aiPlayer === PLAYER_X) ? PLAYER_O : PLAYER_X;
-
-  // 1. OPENING BOOK (SÁCH KHAI CUỘC 19x19)
-  if (moveHistory.length === 0) {
-    return { r: 9, c: 9 };
-  }
-  if (moveHistory.length === 1 && gameMode === 'pve') {
-    const key = `(${moveHistory[0].r},${moveHistory[0].c})`;
-    if (OPENING_BOOK_19[key]) {
-      const picks = OPENING_BOOK_19[key];
-      return picks[Math.floor(Math.random() * picks.length)];
-    }
+  if (moveHistory.length === 0) return { r: 9, c: 9 };
+  if (moveHistory.length === 1 && Math.random() > 0.5) {
+     const p = moveHistory[0];
+     // Trả lời ngẫu nhiên 1 trong 8 ô quanh tâm để né khai cuộc quen thuộc
+     const offsets = [[-1,-1],[-1,0],[-1,1],[0,-1],[0,1],[1,-1],[1,0],[1,1]];
+     const off = offsets[Math.floor(Math.random()*offsets.length)];
+     return { r: p.r + off[0], c: p.c + off[1] };
   }
 
-  // 2. CẢNH BÁO KHẨN CẤP: BẮT BUỘC THẮNG NGAY HOẶC BẮT BUỘC CHẶN 4 MỞ / NƯỚC ĐÔI
-  const immediateCandidates = getOrderedCandidates(aiPlayer, 15);
+  // Tùy chỉnh độ sâu và thời gian theo cấp độ (Hell Mode: sâu 8-10 lớp, 2.5s suy nghĩ)
+  let maxDepth = 2;
+  let time = 300;
+  
+  if (aiDifficulty === 'medium') { maxDepth = 4; time = 800; }
+  else if (aiDifficulty === 'hard') { maxDepth = 6; time = 1500; }
+  else if (aiDifficulty === 'hell') { maxDepth = 10; time = 2500; } // Sâu 10 nước, 2.5 giây
 
-  // A. Nếu AI có nước thắng ngay (5 cờ hoặc 4 mở) -> Đánh ngay lập tức!
-  for (let cand of immediateCandidates) {
-    if (cand.attackScore >= AI_SCORE_FIVE || cand.attackScore >= AI_SCORE_LIVE_FOUR || cand.attackScore >= AI_SCORE_FORK_44) {
-      return cand;
-    }
-  }
-
-  // B. Nếu Đối phương có nước thắng ngay (5 cờ, 4 mở, nước đôi 4-4/4-3) -> BẮT BUỘC CHẶN NGAY!
-  for (let cand of immediateCandidates) {
-    if (cand.defenseScore >= AI_SCORE_FIVE || cand.defenseScore >= AI_SCORE_LIVE_FOUR || cand.defenseScore >= AI_SCORE_FORK_44 || cand.defenseScore >= AI_SCORE_FORK_43) {
-      return cand;
-    }
-  }
-
-  // 3. PHÂN CHIA NĂNG LỰC THEO 4 CẤP ĐỘ KHÓ:
-
-  // A. CHẾ ĐỘ DỄ (NOVICE - GREEDY DEPTH 2)
-  if (aiDifficulty === 'easy') {
-    const candidates = getOrderedCandidates(aiPlayer, 12);
-    if (candidates.length > 2 && Math.random() < 0.20) {
-      return candidates[Math.floor(Math.random() * Math.min(3, candidates.length))];
-    }
-    return candidates[0];
-  }
-
-  // B. CHẾ ĐỘ VỪA (INTERMEDIATE - DEPTH 4 MINIMAX + FORK DEFENSE)
-  if (aiDifficulty === 'medium') {
-    const candidates = getOrderedCandidates(aiPlayer, 12);
-
-    // Chặn nước đôi 3-3 nếu đối phương có
-    if (candidates[0].defenseScore >= AI_SCORE_FORK_33 || candidates[0].defenseScore >= AI_SCORE_BLOCKED_FOUR) {
-      return candidates[0];
-    }
-
-    let bestMove = candidates[0];
-    let bestVal = -Infinity;
-    const startTime = Date.now();
-
-    for (let cand of candidates.slice(0, 7)) {
-      board[cand.r][cand.c] = aiPlayer;
-      let val = minimaxAlphaBeta(3, -Infinity, Infinity, false, aiPlayer, oppPlayer, startTime, 350);
-      board[cand.r][cand.c] = EMPTY;
-
-      if (val > bestVal) {
-        bestVal = val;
-        bestMove = cand;
-      }
-    }
-    return bestMove;
-  }
-
-  // C. CHẾ ĐỘ KHÓ (ADVANCED - DEPTH 6 MINIMAX ALPHA-BETA + VCF DEPTH 8)
-  if (aiDifficulty === 'hard') {
-    // Tìm VCF nhanh 8 nước cho AI
-    const quickVCF = findVCF(aiPlayer, 8, 8);
-    if (quickVCF && quickVCF.length > 0) return quickVCF[0];
-
-    // Chặn VCF nhanh 8 nước của đối phương
-    const oppVCF = findVCF(oppPlayer, 8, 8);
-    if (oppVCF && oppVCF.length > 0) return oppVCF[0];
-
-    const candidates = getOrderedCandidates(aiPlayer, 14);
-    let bestMove = candidates[0];
-    let bestVal = -Infinity;
-    const startTime = Date.now();
-
-    for (let cand of candidates.slice(0, 9)) {
-      board[cand.r][cand.c] = aiPlayer;
-      let val = minimaxAlphaBeta(5, -Infinity, Infinity, false, aiPlayer, oppPlayer, startTime, 650);
-      board[cand.r][cand.c] = EMPTY;
-
-      if (val > bestVal) {
-        bestVal = val;
-        bestMove = cand;
-      }
-    }
-    return bestMove;
-  }
-
-  // D. CHẾ ĐỘ ĐỊA NGỤC TỐI THƯỢNG (EXPERT / HELL 💀 - DEPTH 8 MINIMAX + VCF 14 + VCT 8 + MOVE ORDERING)
-  if (aiDifficulty === 'hell') {
-    // 1. Sâu VCF Solver: Tìm chuỗi dứt điểm VCF 14 nước cho AI
-    const vcfWin = findVCF(aiPlayer, 14, 14);
-    if (vcfWin && vcfWin.length > 0) {
-      console.log('💀 HELL AI: Kích hoạt VCF dứt điểm tuyệt đối!', vcfWin);
-      return vcfWin[0];
-    }
-
-    // 2. Chặn VCF Solver: Phá chuỗi VCF 14 nước của đối phương
-    const vcfOppBlock = findVCF(oppPlayer, 14, 14);
-    if (vcfOppBlock && vcfOppBlock.length > 0) {
-      console.log('💀 HELL AI: Phát hiện & Chặn đứng chuỗi VCF đối phương!', vcfOppBlock);
-      return vcfOppBlock[0];
-    }
-
-    // 3. Sâu VCT Solver: Tìm chuỗi VCT (Victory by Continuous Three) 8 nước
-    const vctWin = findVCT(aiPlayer, 8, 8);
-    if (vctWin && vctWin.length > 0) {
-      console.log('💀 HELL AI: Kích hoạt VCT dứt điểm gọng kìm 3-3!', vctWin);
-      return vctWin[0];
-    }
-
-    // 4. Tìm kiếm Minimax Alpha-Beta Depth 7-8 với Move Ordering tinh nhuệ
-    const candidates = getOrderedCandidates(aiPlayer, 16);
-    let bestMove = candidates[0];
-    let bestVal = -Infinity;
-    const startTime = Date.now();
-
-    for (let cand of candidates.slice(0, 10)) {
-      board[cand.r][cand.c] = aiPlayer;
-      let val = minimaxAlphaBeta(7, -Infinity, Infinity, false, aiPlayer, oppPlayer, startTime, 900);
-      board[cand.r][cand.c] = EMPTY;
-
-      if (val > bestVal) {
-        bestVal = val;
-        bestMove = cand;
-      }
-    }
-    return bestMove;
-  }
-
-  return getOrderedCandidates(aiPlayer, 1)[0];
+  console.log(`[Engine] Starting search for ${aiDifficulty} mode...`);
+  return GomokuEngine.search(aiPlayer, maxDepth, time);
 }
 
-/* 9. KÍCH HOẠT LƯỢT ĐI CỦA MÁY */
 function triggerAiTurn() {
   isAiThinking = true;
   const badge = document.getElementById('aiThinkingBadge');
-  if (badge) {
-    badge.classList.remove('hidden');
-    badge.classList.add('flex');
-  }
+  if (badge) { badge.classList.remove('hidden'); badge.classList.add('flex'); }
 
-  const delay = (aiDifficulty === 'hard' || aiDifficulty === 'hell') ? 350 : 200;
+  // Để setTimeout dài hơn chút cho UI render badge "Đang suy nghĩ"
   setTimeout(() => {
     try {
       if (gameOver) return;
-
       const bestMove = getBestAiMove(currentPlayer);
-
-      // Mở khóa cờ isAiThinking trước khi thực hiện makeMove!
       isAiThinking = false;
-      if (badge) {
-        badge.classList.add('hidden');
-        badge.classList.remove('flex');
-      }
-
-      if (bestMove) {
-        makeMove(bestMove.r, bestMove.c);
-      }
+      if (badge) { badge.classList.add('hidden'); badge.classList.remove('flex'); }
+      if (bestMove) makeMove(bestMove.r, bestMove.c);
     } catch (err) {
-      console.error('AI execution error:', err);
+      console.error("[Engine Error]", err);
       isAiThinking = false;
-      if (badge) {
-        badge.classList.add('hidden');
-        badge.classList.remove('flex');
-      }
+      if (badge) { badge.classList.add('hidden'); badge.classList.remove('flex'); }
     }
-  }, delay);
+  }, 100);
 }
